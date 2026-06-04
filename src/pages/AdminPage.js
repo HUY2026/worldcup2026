@@ -105,7 +105,7 @@ export default function AdminPage() {
       const { error } = await supabase.from('matches').insert({
         round, home_team: home.trim(), away_team: away.trim(),
         match_time: vnDate.toISOString(),
-        match_number: Date.now()
+        match_number: Math.floor(Date.now() / 1000)
       })
       if (error) throw error
       toast('✅ Đã thêm trận đấu!', 'success')
