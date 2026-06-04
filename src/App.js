@@ -82,13 +82,21 @@ function Header({ player, isAdmin, onLogout }) {
 // ─── Mobile Bottom Nav ─────────────────────────────────────────
 function BottomNav({ isAdmin }) {
   return (
-    <nav style={{
-      display: 'none',
-      position: 'fixed', bottom: 0, left: 0, right: 0,
-      background: 'white', borderTop: '1px solid var(--border)',
-      padding: '8px 0', zIndex: 100,
-      '@media (max-width: 600px)': { display: 'flex' }
-    }}>
+    <nav className="bottom-nav">
+      <NavLink to="/" end className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}>
+        <span>⚽</span>
+        <span>Dự Đoán</span>
+      </NavLink>
+      <NavLink to="/leaderboard" className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}>
+        <span>🏅</span>
+        <span>Xếp Hạng</span>
+      </NavLink>
+      {isAdmin && (
+        <NavLink to="/admin" className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}>
+          <span>⚙️</span>
+          <span>Admin</span>
+        </NavLink>
+      )}
     </nav>
   )
 }
@@ -136,6 +144,7 @@ export default function App() {
               <Route path="/admin" element={isAdmin ? <AdminPage /> : <div className="empty-state"><div className="empty-state-icon">🔒</div><div className="empty-state-title">Không có quyền truy cập</div></div>} />
             </Routes>
           </main>
+          <BottomNav isAdmin={isAdmin} />
           <ToastContainer />
         </div>
       </BrowserRouter>
