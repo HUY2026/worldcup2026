@@ -110,7 +110,7 @@ function KnockoutMatchCard({ match, prediction, onPredictKnockout }) {
   return (
     <div className={`match-card ${locked ? 'locked' : ''} ${hasResult ? 'has-result' : ''}`}>
       <div className="match-meta">
-        <span className="match-time-badge">🕐 {toVNTimeOnly(match.match_time)}</span>
+        <span className="match-time-badge">🕐 {toVNTime(match.match_time)}</span>
         <span className={`match-status-badge ${hasResult ? 'done' : locked ? 'locked' : 'upcoming'}`}>
           {hasResult ? '✅ Có kết quả' : locked ? '🔒 Đã khóa' : '⏰ Sắp diễn ra'}
         </span>
