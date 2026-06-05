@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../App'
 import { toast } from '../App'
-import { toVNTimeOnly, toVNDate, isMatchLocked, ROUND_LABELS, ROUND_ORDER } from '../lib/utils'
+import { toVNTime, toVNTimeOnly, toVNDate, isMatchLocked, ROUND_LABELS, ROUND_ORDER } from '../lib/utils'
 
 // ─── Group Match Card ─────────────────────────────────────────
 function GroupMatchCard({ match, prediction, onPredict }) {
@@ -29,7 +29,7 @@ function GroupMatchCard({ match, prediction, onPredict }) {
   return (
     <div className={`match-card ${locked ? 'locked' : ''} ${hasResult ? 'has-result' : ''}`}>
       <div className="match-meta">
-        <span className="match-time-badge">🕐 {toVNTimeOnly(match.match_time)}</span>
+        <span className="match-time-badge">🕐 {toVNTime(match.match_time)}</span>
         <span className={`match-status-badge ${hasResult ? 'done' : locked ? 'locked' : 'upcoming'}`}>
           {hasResult ? '✅ Có kết quả' : locked ? '🔒 Đã khóa' : '⏰ Sắp diễn ra'}
         </span>
@@ -110,7 +110,7 @@ function KnockoutMatchCard({ match, prediction, onPredictKnockout }) {
   return (
     <div className={`match-card ${locked ? 'locked' : ''} ${hasResult ? 'has-result' : ''}`}>
       <div className="match-meta">
-        <span className="match-time-badge">🕐 {toVNTimeOnly(match.match_time)}</span>
+        <span className="match-time-badge">🕐 {toVNTime(match.match_time)}</span>
         <span className={`match-status-badge ${hasResult ? 'done' : locked ? 'locked' : 'upcoming'}`}>
           {hasResult ? '✅ Có kết quả' : locked ? '🔒 Đã khóa' : '⏰ Sắp diễn ra'}
         </span>
