@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../App'
 import { toast } from '../App'
-import { toVNTimeOnly, toVNDate, toVNTime, isMatchLocked, ROUND_LABELS, ROUND_ORDER } from '../lib/utils'
+import { toVNTimeOnly, toVNDate, isMatchLocked, ROUND_LABELS, ROUND_ORDER } from '../lib/utils'
 
 // ─── Group Match Card ─────────────────────────────────────────
 function GroupMatchCard({ match, prediction, onPredict }) {
@@ -29,7 +29,7 @@ function GroupMatchCard({ match, prediction, onPredict }) {
   return (
     <div className={`match-card ${locked ? 'locked' : ''} ${hasResult ? 'has-result' : ''}`}>
       <div className="match-meta">
-        <span className="match-time-badge">🕐 {toVNTime(match.match_time)}</span>
+        <span className="match-time-badge">🕐 {toVNTimeOnly(match.match_time)}</span>
         <span className={`match-status-badge ${hasResult ? 'done' : locked ? 'locked' : 'upcoming'}`}>
           {hasResult ? '✅ Có kết quả' : locked ? '🔒 Đã khóa' : '⏰ Sắp diễn ra'}
         </span>
@@ -110,7 +110,7 @@ function KnockoutMatchCard({ match, prediction, onPredictKnockout }) {
   return (
     <div className={`match-card ${locked ? 'locked' : ''} ${hasResult ? 'has-result' : ''}`}>
       <div className="match-meta">
-        <span className="match-time-badge">🕐 {toVNTime(match.match_time)}</span>
+        <span className="match-time-badge">🕐 {toVNTimeOnly(match.match_time)}</span>
         <span className={`match-status-badge ${hasResult ? 'done' : locked ? 'locked' : 'upcoming'}`}>
           {hasResult ? '✅ Có kết quả' : locked ? '🔒 Đã khóa' : '⏰ Sắp diễn ra'}
         </span>
@@ -280,37 +280,6 @@ export default function PredictPage() {
 
   return (
     <div>
-      {/* Scoring rules info */}
-      <div style={{
-        background: 'linear-gradient(135deg, #f0f7ff, #e8f4ff)',
-        border: '1px solid #b3d4f5',
-        borderRadius: 'var(--radius)',
-        padding: '14px 18px',
-        marginBottom: 16,
-        fontSize: 13,
-      }}>
-        <div style={{ fontFamily: 'Oswald', fontWeight: 700, fontSize: 15, color: 'var(--primary)', marginBottom: 10 }}>
-          📊 Cách tính điểm
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px 24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ background: 'var(--primary)', color: 'white', borderRadius: 6, padding: '2px 9px', fontFamily: 'Oswald', fontWeight: 700, fontSize: 14 }}>+2đ</span>
-            <span style={{ color: 'var(--text)' }}>Đoán đúng kết quả vòng bảng (T/H/B)</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ background: '#2ecc71', color: 'white', borderRadius: 6, padding: '2px 9px', fontFamily: 'Oswald', fontWeight: 700, fontSize: 14 }}>+3đ</span>
-            <span style={{ color: 'var(--text)' }}>Đoán đúng đội thắng vòng loại trực tiếp</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ background: '#f39c12', color: 'white', borderRadius: 6, padding: '2px 9px', fontFamily: 'Oswald', fontWeight: 700, fontSize: 14 }}>+7đ</span>
-            <span style={{ color: 'var(--text)' }}>Đoán đúng cả đội thắng <strong>lẫn tỷ số chính xác</strong></span>
-          </div>
-        </div>
-        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)', borderTop: '1px solid #c8e0f7', paddingTop: 8 }}>
-          💡 Trận bắt đầu là <strong>khóa dự đoán</strong>. Hãy dự đoán sớm trước giờ đấu!
-        </div>
-      </div>
-
       {/* Stats */}
       <div className="stat-grid">
         <div className="stat-card">
@@ -380,6 +349,12 @@ export default function PredictPage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: 'var(--border)' }}>
                 {groupMatches
                   .filter(m => m.group_name === activeGroup)
+                  .sort((a, b) => {
+                    const aD = a.result !== null ? 1 : 0
+                    const bD = b.result !== null ? 1 : 0
+                    if (aD !== bD) return aD - bD
+                    return new Date(a.match_time) - new Date(b.match_time)
+                  })
                   .map(match => (
                     <div key={match.id} style={{ background: 'var(--bg-card)', padding: '12px 16px' }}>
                       <GroupMatchCard
@@ -405,6 +380,12 @@ export default function PredictPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {knockoutMatches
               .filter(m => m.round === activeTab)
+              .sort((a, b) => {
+                const aD = a.result !== null ? 1 : 0
+                const bD = b.result !== null ? 1 : 0
+                if (aD !== bD) return aD - bD
+                return new Date(a.match_time) - new Date(b.match_time)
+              })
               .map(match => (
                 <KnockoutMatchCard
                   key={match.id}
