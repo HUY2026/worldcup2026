@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage'
 import PredictPage from './pages/PredictPage'
 import LeaderboardPage from './pages/LeaderboardPage'
 import AdminPage from './pages/AdminPage'
+import StandingsPage from './pages/StandingsPage'
 
 // ─── Context ──────────────────────────────────────────────────
 export const AppContext = createContext(null)
@@ -57,6 +58,9 @@ function Header({ player, isAdmin, onLogout }) {
           <NavLink to="/leaderboard" className={({ isActive }) => `nav-btn ${isActive ? 'active' : ''}`}>
             🏅 Bảng Xếp Hạng
           </NavLink>
+          <NavLink to="/standings" className={({ isActive }) => `nav-btn ${isActive ? 'active' : ''}`}>
+            📊 Bảng Đấu
+          </NavLink>
           {isAdmin && (
             <NavLink to="/admin" className={({ isActive }) => `nav-btn ${isActive ? 'active' : ''}`}>
               ⚙️ Admin
@@ -84,17 +88,17 @@ function BottomNav({ isAdmin }) {
   return (
     <nav className="bottom-nav">
       <NavLink to="/" end className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}>
-        <span>⚽</span>
-        <span>Dự Đoán</span>
+        <span>⚽</span><span>Dự Đoán</span>
       </NavLink>
       <NavLink to="/leaderboard" className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}>
-        <span>🏅</span>
-        <span>Xếp Hạng</span>
+        <span>🏅</span><span>Xếp Hạng</span>
+      </NavLink>
+      <NavLink to="/standings" className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}>
+        <span>📊</span><span>Bảng Đấu</span>
       </NavLink>
       {isAdmin && (
         <NavLink to="/admin" className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}>
-          <span>⚙️</span>
-          <span>Admin</span>
+          <span>⚙️</span><span>Admin</span>
         </NavLink>
       )}
     </nav>
@@ -141,6 +145,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<PredictPage />} />
               <Route path="/leaderboard" element={<LeaderboardPage />} />
+              <Route path="/standings" element={<StandingsPage />} />
               <Route path="/admin" element={isAdmin ? <AdminPage /> : <div className="empty-state"><div className="empty-state-icon">🔒</div><div className="empty-state-title">Không có quyền truy cập</div></div>} />
             </Routes>
           </main>
