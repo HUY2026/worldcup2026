@@ -6,14 +6,20 @@ const ROUND_ORDER = ['r32', 'r16', 'qf', 'sf', 'final']
 
 function computeStandings(matches) {
   const standings = {}
+  // Bước 1: init tất cả đội từ mọi trận (kể cả chưa có kết quả)
   matches.forEach(m => {
-    if (m.round !== 'group' || m.result == null) return
+    if (m.round !== 'group') return
     const g = m.group_name
     if (!standings[g]) standings[g] = {}
     const init = (team) => {
       if (!standings[g][team]) standings[g][team] = { team, P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0, GD: 0, Pts: 0 }
     }
     init(m.home_team); init(m.away_team)
+  })
+  // Bước 2: tính điểm từ các trận đã có kết quả
+  matches.forEach(m => {
+    if (m.round !== 'group' || m.result == null) return
+    const g = m.group_name
     const h = standings[g][m.home_team], a = standings[g][m.away_team]
     h.P++; a.P++
     h.GF += m.home_score ?? 0; h.GA += m.away_score ?? 0
@@ -215,9 +221,7 @@ export default function StandingsPage() {
   const groupMatches = matches.filter(m => m.round === 'group')
   const knockoutMatches = matches.filter(m => m.round !== 'group')
   const standings = computeStandings(groupMatches)
-  const allGroups = 'ABCDEFGHIJKL'.split('')
-  const existingGroups = Object.keys(standings).sort()
-  const groups = existingGroups.length > 0 ? existingGroups : allGroups
+  const groups = 'ABCDEFGHIJKL'.split('').filter(g => standings[g])
 
   // Knockout by round
   const knockoutByRound = {}
@@ -288,12 +292,6 @@ export default function StandingsPage() {
                 )
               })()}
             </>
-          ) : (
-            <div className="empty-state" style={{ padding: 40 }}>
-              <div className="empty-state-icon">⏳</div>
-              <div className="empty-state-title">Chưa có kết quả bảng {selectedGroup}</div>
-              <div style={{ fontSize: 13 }}>Kết quả sẽ hiển thị sau khi trận đấu kết thúc</div>
-            </div>
           )}
         </>
       )}
