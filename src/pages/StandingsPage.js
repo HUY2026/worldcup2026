@@ -6,7 +6,7 @@ const ROUND_ORDER = ['r32', 'r16', 'qf', 'sf', 'final']
 
 function computeStandings(matches) {
   const standings = {}
-  // Bước 1: init tất cả đội từ mọi trận (kể cả chưa có kết quả)
+  // Init tất cả đội từ mọi trận (kể cả chưa có kết quả)
   matches.forEach(m => {
     if (m.round !== 'group') return
     const g = m.group_name
@@ -16,7 +16,7 @@ function computeStandings(matches) {
     }
     init(m.home_team); init(m.away_team)
   })
-  // Bước 2: tính điểm từ các trận đã có kết quả
+  // Tính điểm từ các trận đã có kết quả
   matches.forEach(m => {
     if (m.round !== 'group' || m.result == null) return
     const g = m.group_name
@@ -38,11 +38,9 @@ function computeStandings(matches) {
   return result
 }
 
-// Component bảng xếp hạng 1 group
 function GroupTable({ groupName, rows, matches }) {
   const [showMatches, setShowMatches] = useState(false)
-  const groupMatches = matches.filter(m => m.group_name === groupName && m.result !== null)
-
+  const doneMatches = matches.filter(m => m.group_name === groupName && m.result !== null)
   return (
     <div className="card" style={{ marginBottom: 16, padding: 0, overflow: 'hidden' }}>
       <div style={{
@@ -51,14 +49,13 @@ function GroupTable({ groupName, rows, matches }) {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between'
       }}>
         <span style={{ fontFamily: 'Oswald', fontWeight: 700, fontSize: 15 }}>⚽ Bảng {groupName}</span>
-        {groupMatches.length > 0 && (
+        {doneMatches.length > 0 && (
           <button onClick={() => setShowMatches(v => !v)}
             style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white', borderRadius: 12, padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>
-            {showMatches ? '▲ Ẩn kết quả' : `▼ ${groupMatches.length} kết quả`}
+            {showMatches ? '▲ Ẩn kết quả' : `▼ ${doneMatches.length} kết quả`}
           </button>
         )}
       </div>
-
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
@@ -87,7 +84,7 @@ function GroupTable({ groupName, rows, matches }) {
                 </td>
                 <td style={{ padding: '9px 12px', fontWeight: i < 2 ? 700 : 400 }}>
                   {row.team}
-                  {i < 2 && <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--primary)', fontWeight: 600 }}>▲ ĐI TIẾP</span>}
+                  {i < 2 && row.P > 0 && <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--primary)', fontWeight: 600 }}>▲ DẪN ĐẦU</span>}
                 </td>
                 <td style={{ padding: '9px 8px', textAlign: 'center', color: 'var(--text-muted)' }}>{row.P}</td>
                 <td style={{ padding: '9px 8px', textAlign: 'center', color: '#2ecc71', fontWeight: 600 }}>{row.W}</td>
@@ -103,19 +100,17 @@ function GroupTable({ groupName, rows, matches }) {
           </tbody>
         </table>
       </div>
-
-      {showMatches && groupMatches.length > 0 && (
+      {showMatches && doneMatches.length > 0 && (
         <div style={{ borderTop: '1px solid var(--border)', padding: '8px 12px', background: 'var(--bg)' }}>
-          {groupMatches.map(m => (
+          {doneMatches.map(m => (
             <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', fontSize: 13, borderBottom: '1px solid var(--border)' }}>
-              <span style={{ color: m.result === 'home' ? 'var(--text)' : 'var(--text-muted)', fontWeight: m.result === 'home' ? 700 : 400 }}>{m.home_team}</span>
+              <span style={{ fontWeight: m.result === 'home' ? 700 : 400 }}>{m.home_team}</span>
               <span style={{ fontFamily: 'Oswald', fontWeight: 700, fontSize: 15, color: 'var(--primary)', margin: '0 8px' }}>{m.home_score} - {m.away_score}</span>
-              <span style={{ color: m.result === 'away' ? 'var(--text)' : 'var(--text-muted)', fontWeight: m.result === 'away' ? 700 : 400, textAlign: 'right' }}>{m.away_team}</span>
+              <span style={{ fontWeight: m.result === 'away' ? 700 : 400, textAlign: 'right' }}>{m.away_team}</span>
             </div>
           ))}
         </div>
       )}
-
       <div style={{ padding: '6px 12px', fontSize: 10, color: 'var(--text-muted)', borderTop: '1px solid var(--border)' }}>
         TĐ=Trận đã đấu · T/H/B=Thắng/Hòa/Bại · HS=Bàn thắng:bại · HH=Hiệu số · Đ=Điểm
       </div>
@@ -123,7 +118,6 @@ function GroupTable({ groupName, rows, matches }) {
   )
 }
 
-// Component bracket 1 trận
 function BracketMatch({ match }) {
   const homeWin = match?.result === 'home'
   const awayWin = match?.result === 'away'
@@ -135,32 +129,13 @@ function BracketMatch({ match }) {
     }}>
       {match ? (
         <>
-          <div style={{
-            padding: '7px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            borderBottom: '1px solid var(--border)',
-            background: homeWin ? 'rgba(26,111,196,0.08)' : 'white',
-          }}>
-            <span style={{ fontSize: 13, fontWeight: homeWin ? 700 : 400, color: homeWin ? 'var(--primary)' : 'var(--text)' }}>
-              {match.home_team || '?'}
-            </span>
-            {match.result && (
-              <span style={{ fontFamily: 'Oswald', fontWeight: 700, color: homeWin ? 'var(--primary)' : 'var(--text-muted)' }}>
-                {match.home_score}
-              </span>
-            )}
+          <div style={{ padding: '7px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', background: homeWin ? 'rgba(26,111,196,0.08)' : 'white' }}>
+            <span style={{ fontSize: 13, fontWeight: homeWin ? 700 : 400, color: homeWin ? 'var(--primary)' : 'var(--text)' }}>{match.home_team || '?'}</span>
+            {match.result && <span style={{ fontFamily: 'Oswald', fontWeight: 700, color: homeWin ? 'var(--primary)' : 'var(--text-muted)' }}>{match.home_score}</span>}
           </div>
-          <div style={{
-            padding: '7px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            background: awayWin ? 'rgba(26,111,196,0.08)' : 'white',
-          }}>
-            <span style={{ fontSize: 13, fontWeight: awayWin ? 700 : 400, color: awayWin ? 'var(--primary)' : 'var(--text)' }}>
-              {match.away_team || '?'}
-            </span>
-            {match.result && (
-              <span style={{ fontFamily: 'Oswald', fontWeight: 700, color: awayWin ? 'var(--primary)' : 'var(--text-muted)' }}>
-                {match.away_score}
-              </span>
-            )}
+          <div style={{ padding: '7px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: awayWin ? 'rgba(26,111,196,0.08)' : 'white' }}>
+            <span style={{ fontSize: 13, fontWeight: awayWin ? 700 : 400, color: awayWin ? 'var(--primary)' : 'var(--text)' }}>{match.away_team || '?'}</span>
+            {match.result && <span style={{ fontFamily: 'Oswald', fontWeight: 700, color: awayWin ? 'var(--primary)' : 'var(--text-muted)' }}>{match.away_score}</span>}
           </div>
           {match.penalty_home !== null && match.penalty_home !== undefined && (
             <div style={{ padding: '3px 12px', fontSize: 10, color: 'var(--text-muted)', background: 'var(--bg)', borderTop: '1px solid var(--border)' }}>
@@ -178,28 +153,21 @@ function BracketMatch({ match }) {
   )
 }
 
-// Bracket section cho 1 vòng
-function BracketRound({ label, matches, emptyCount }) {
-  const total = matches.length + (emptyCount || 0)
-  const slots = [...matches]
-  while (slots.length < total) slots.push(null)
-
+function BracketRound({ label, matches }) {
   return (
     <div style={{ minWidth: 180, flex: 1 }}>
-      <div style={{
-        textAlign: 'center', fontFamily: 'Oswald', fontWeight: 700, fontSize: 13,
-        color: 'var(--primary)', marginBottom: 10, padding: '4px 0',
-        borderBottom: '2px solid var(--primary)'
-      }}>{label}</div>
+      <div style={{ textAlign: 'center', fontFamily: 'Oswald', fontWeight: 700, fontSize: 13, color: 'var(--primary)', marginBottom: 10, padding: '4px 0', borderBottom: '2px solid var(--primary)' }}>
+        {label}
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {slots.map((m, i) => <BracketMatch key={i} match={m} />)}
+        {matches.map((m, i) => <BracketMatch key={i} match={m} />)}
       </div>
     </div>
   )
 }
 
 export default function StandingsPage() {
-  const [tab, setTab] = useState('groups') // 'groups' | 'bracket'
+  const [tab, setTab] = useState('groups')
   const [matches, setMatches] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedGroup, setSelectedGroup] = useState('A')
@@ -222,12 +190,8 @@ export default function StandingsPage() {
   const knockoutMatches = matches.filter(m => m.round !== 'group')
   const standings = computeStandings(groupMatches)
   const groups = 'ABCDEFGHIJKL'.split('').filter(g => standings[g])
-
-  // Knockout by round
   const knockoutByRound = {}
-  ROUND_ORDER.forEach(r => {
-    knockoutByRound[r] = knockoutMatches.filter(m => m.round === r)
-  })
+  ROUND_ORDER.forEach(r => { knockoutByRound[r] = knockoutMatches.filter(m => m.round === r) })
   const hasKnockout = knockoutMatches.length > 0
 
   if (loading) return (
@@ -238,18 +202,10 @@ export default function StandingsPage() {
     <div>
       {/* Tab switcher */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-        <button
-          onClick={() => setTab('groups')}
-          className={tab === 'groups' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'}
-          style={{ flex: 1 }}
-        >
+        <button onClick={() => setTab('groups')} className={tab === 'groups' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'} style={{ flex: 1 }}>
           📊 Bảng Xếp Hạng Group
         </button>
-        <button
-          onClick={() => setTab('bracket')}
-          className={tab === 'bracket' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'}
-          style={{ flex: 1 }}
-        >
+        <button onClick={() => setTab('bracket')} className={tab === 'bracket' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'} style={{ flex: 1 }}>
           ⚡ Nhánh Đấu Loại Trực Tiếp
         </button>
       </div>
@@ -257,7 +213,6 @@ export default function StandingsPage() {
       {/* ── TAB: BẢNG XẾP HẠNG GROUP ── */}
       {tab === 'groups' && (
         <>
-          {/* Group selector */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
             {groups.map(g => (
               <button key={g} onClick={() => setSelectedGroup(g)} style={{
@@ -273,7 +228,6 @@ export default function StandingsPage() {
           {standings[selectedGroup] ? (
             <>
               <GroupTable groupName={selectedGroup} rows={standings[selectedGroup]} matches={groupMatches} />
-              {/* Upcoming matches in group */}
               {(() => {
                 const upcoming = groupMatches.filter(m => m.group_name === selectedGroup && m.result === null)
                 if (!upcoming.length) return null
@@ -292,6 +246,11 @@ export default function StandingsPage() {
                 )
               })()}
             </>
+          ) : (
+            <div className="empty-state" style={{ padding: 40 }}>
+              <div className="empty-state-icon">⏳</div>
+              <div className="empty-state-title">Bảng {selectedGroup} chưa có dữ liệu</div>
+            </div>
           )}
         </>
       )}
@@ -310,11 +269,7 @@ export default function StandingsPage() {
               <div style={{ overflowX: 'auto', paddingBottom: 12 }}>
                 <div style={{ display: 'flex', gap: 16, minWidth: 600 }}>
                   {ROUND_ORDER.filter(r => knockoutByRound[r]?.length > 0).map(r => (
-                    <BracketRound
-                      key={r}
-                      label={ROUND_LABELS[r] || r}
-                      matches={knockoutByRound[r]}
-                    />
+                    <BracketRound key={r} label={ROUND_LABELS[r] || r} matches={knockoutByRound[r]} />
                   ))}
                 </div>
               </div>
