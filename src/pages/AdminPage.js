@@ -38,6 +38,39 @@ export default function AdminPage() {
     return 'draw'
   }
 
+  async function handleClearResult(match) {
+    if (!window.confirm(`Hủy kết quả trận ${match.home_team} vs ${match.away_team}?`)) return
+    setScoring(s => ({ ...s, [match.id]: true }))
+    try {
+      const { error } = await supabase.from('matches').update({
+        home_score: null, away_score: null, result: null,
+        penalty_home: null, penalty_away: null
+      }).eq('id', match.id)
+      if (error) throw error
+
+      // Reset predictions cho trận này
+      await supabase.from('predictions').update({ points: 0, is_scored: false }).eq('match_id', match.id)
+
+      // Tính lại điểm tất cả người chơi bị ảnh hưởng
+      const { data: preds } = await supabase.from('predictions').select('player_id').eq('match_id', match.id)
+      const playerIds = [...new Set((preds || []).map(p => p.player_id))]
+      for (const pid of playerIds) {
+        const { data: allPreds } = await supabase.from('predictions').select('points').eq('player_id', pid).eq('is_scored', true)
+        const total = (allPreds || []).reduce((s, p) => s + (p.points || 0), 0)
+        await supabase.from('players').update({ total_points: total }).eq('id', pid)
+      }
+
+      setMatches(ms => ms.map(m => m.id === match.id ? { ...m, home_score: null, away_score: null, result: null, penalty_home: null, penalty_away: null } : m))
+      setInputs(s => ({ ...s, [match.id]: { home: '', away: '', penaltyHome: '', penaltyAway: '', hasPenalty: false } }))
+      toast('✅ Đã hủy kết quả và reset điểm!', 'success')
+    } catch (err) {
+      console.error(err)
+      toast('Lỗi khi hủy kết quả!', 'error')
+    } finally {
+      setScoring(s => ({ ...s, [match.id]: false }))
+    }
+  }
+
   async function handleSaveResult(match) {
     const inp = inputs[match.id]
     if (inp.home === '' || inp.away === '') return toast('Nhập tỷ số trước!', 'error')
@@ -299,17 +332,30 @@ export default function AdminPage() {
                     </span>
                   )}
 
-                  <button
-                    className={`btn btn-sm ${hasResult ? 'btn-outline' : 'btn-primary'}`}
-                    onClick={() => handleSaveResult(match)}
-                    disabled={scoring[match.id]}
-                    style={{ minWidth: 80 }}
-                  >
-                    {scoring[match.id]
-                      ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Đang xử lý...</>
-                      : hasResult ? '🔄 Cập nhật' : '💾 Lưu kết quả'
-                    }
-                  </button>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      className={`btn btn-sm ${hasResult ? 'btn-outline' : 'btn-primary'}`}
+                      onClick={() => handleSaveResult(match)}
+                      disabled={scoring[match.id]}
+                      style={{ minWidth: 80 }}
+                    >
+                      {scoring[match.id]
+                        ? <><span className="spinner" style={{ width: 14, height: 14 }} /> Đang xử lý...</>
+                        : hasResult ? '🔄 Cập nhật' : '💾 Lưu kết quả'
+                      }
+                    </button>
+                    {hasResult && (
+                      <button
+                        className="btn btn-sm"
+                        style={{ background: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5', minWidth: 60 }}
+                        onClick={() => handleClearResult(match)}
+                        disabled={scoring[match.id]}
+                        title="Hủy kết quả, reset về chưa có"
+                      >
+                        🗑️ Hủy
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             )
