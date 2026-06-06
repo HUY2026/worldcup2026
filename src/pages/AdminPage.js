@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { toast } from '../App'
-import { toVNTime, ROUND_LABELS, calculatePoints } from '../lib/utils'
+import { toVNTime, ROUND_LABELS, calculatePoints, ROUND_ORDER } from '../lib/utils'
 
 export default function AdminPage() {
   const [matches, setMatches] = useState([])
@@ -187,7 +187,7 @@ export default function AdminPage() {
         <button className={`tab-btn ${activeTab === 'group' ? 'active' : ''}`} onClick={() => setActiveTab('group')}>
           Vòng Bảng ({groupMatches.filter(m => m.result).length}/{groupMatches.length})
         </button>
-        {[...new Set(knockoutMatches.map(m => m.round))].map(r => (
+        {ROUND_ORDER.filter(r => knockoutMatches.some(m => m.round === r)).map(r => (
           <button key={r} className={`tab-btn ${activeTab === r ? 'active' : ''}`} onClick={() => setActiveTab(r)}>
             {ROUND_LABELS[r]}
           </button>
