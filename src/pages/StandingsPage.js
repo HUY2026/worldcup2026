@@ -1,12 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { toVNTime, ROUND_LABELS } from '../lib/utils'
+import { toVNTime } from '../lib/utils'
 
-const ROUND_ORDER = ['r32', 'r16', 'qf', 'sf', 'final']
-
+// ─── Tính bảng xếp hạng vòng bảng ────────────────────────────
 function computeStandings(matches) {
   const standings = {}
-  // Init tất cả đội từ mọi trận (kể cả chưa có kết quả)
   matches.forEach(m => {
     if (m.round !== 'group') return
     const g = m.group_name
@@ -16,7 +14,6 @@ function computeStandings(matches) {
     }
     init(m.home_team); init(m.away_team)
   })
-  // Tính điểm từ các trận đã có kết quả
   matches.forEach(m => {
     if (m.round !== 'group' || m.result == null) return
     const g = m.group_name
@@ -38,6 +35,257 @@ function computeStandings(matches) {
   return result
 }
 
+// ─── 1 ô trận đấu trong bracket ──────────────────────────────
+function MatchBox({ match, compact = false }) {
+  const homeWin = match?.result === 'home'
+  const awayWin = match?.result === 'away'
+  const h = compact ? 24 : 30
+  const fs = compact ? 11 : 12
+  const fw = compact ? 600 : 700
+
+  const rowStyle = (isHome) => ({
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    padding: compact ? '3px 8px' : '5px 10px',
+    height: h,
+    background: (isHome ? homeWin : awayWin) ? 'rgba(26,111,196,0.12)' : 'white',
+    borderBottom: isHome ? '1px solid var(--border)' : 'none',
+  })
+
+  return (
+    <div style={{
+      background: 'white',
+      border: '1.5px solid var(--border)',
+      borderRadius: 8,
+      overflow: 'hidden',
+      minWidth: compact ? 130 : 150,
+      maxWidth: compact ? 160 : 190,
+      boxShadow: '0 2px 6px rgba(0,0,0,0.07)',
+      width: '100%',
+    }}>
+      {match ? (
+        <>
+          <div style={rowStyle(true)}>
+            <span style={{ fontSize: fs, fontWeight: (homeWin ? fw : 400), color: homeWin ? 'var(--primary)' : 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '78%' }}>
+              {match.home_team || '?'}
+            </span>
+            {match.result != null && (
+              <span style={{ fontFamily: 'Oswald', fontWeight: 700, fontSize: fs + 1, color: homeWin ? 'var(--primary)' : 'var(--text-muted)', flexShrink: 0 }}>
+                {match.home_score}
+              </span>
+            )}
+          </div>
+          <div style={rowStyle(false)}>
+            <span style={{ fontSize: fs, fontWeight: (awayWin ? fw : 400), color: awayWin ? 'var(--primary)' : 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '78%' }}>
+              {match.away_team || '?'}
+            </span>
+            {match.result != null && (
+              <span style={{ fontFamily: 'Oswald', fontWeight: 700, fontSize: fs + 1, color: awayWin ? 'var(--primary)' : 'var(--text-muted)', flexShrink: 0 }}>
+                {match.away_score}
+              </span>
+            )}
+          </div>
+          {match.penalty_home != null && (
+            <div style={{ padding: '2px 8px', fontSize: 10, color: 'var(--text-muted)', background: '#fafafa', borderTop: '1px solid var(--border)' }}>
+              🎯 {match.penalty_home}–{match.penalty_away}
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div style={rowStyle(true)}><span style={{ fontSize: fs, color: 'var(--text-muted)' }}>TBD</span></div>
+          <div style={rowStyle(false)}><span style={{ fontSize: fs, color: 'var(--text-muted)' }}>TBD</span></div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ─── Connector SVG giữa các vòng ─────────────────────────────
+function Connectors({ count, direction, rowHeight, gap }) {
+  // direction: 'right' = nhánh trái (gộp đôi sang phải), 'left' = nhánh phải
+  const totalH = count * rowHeight + (count - 1) * gap
+  const pairs = Math.floor(count / 2)
+  const w = 24
+
+  return (
+    <svg width={w} height={totalH} style={{ flexShrink: 0, overflow: 'visible' }}>
+      {Array.from({ length: pairs }).map((_, i) => {
+        const y1 = i * 2 * (rowHeight + gap) + rowHeight / 2
+        const y2 = (i * 2 + 1) * (rowHeight + gap) + rowHeight / 2
+        const ymid = (y1 + y2) / 2
+        return (
+          <g key={i}>
+            {/* Nối từ ô trên */}
+            {direction === 'right' ? (
+              <>
+                <line x1={0} y1={y1} x2={w / 2} y2={y1} stroke="var(--border)" strokeWidth={1.5} />
+                <line x1={0} y1={y2} x2={w / 2} y2={y2} stroke="var(--border)" strokeWidth={1.5} />
+                <line x1={w / 2} y1={y1} x2={w / 2} y2={y2} stroke="var(--border)" strokeWidth={1.5} />
+                <line x1={w / 2} y1={ymid} x2={w} y2={ymid} stroke="var(--border)" strokeWidth={1.5} />
+              </>
+            ) : (
+              <>
+                <line x1={w} y1={y1} x2={w / 2} y2={y1} stroke="var(--border)" strokeWidth={1.5} />
+                <line x1={w} y1={y2} x2={w / 2} y2={y2} stroke="var(--border)" strokeWidth={1.5} />
+                <line x1={w / 2} y1={y1} x2={w / 2} y2={y2} stroke="var(--border)" strokeWidth={1.5} />
+                <line x1={w / 2} y1={ymid} x2={0} y2={ymid} stroke="var(--border)" strokeWidth={1.5} />
+              </>
+            )}
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
+// ─── 1 cột vòng đấu ──────────────────────────────────────────
+function RoundCol({ label, matches, total, rowHeight, gap, compact }) {
+  // Điền null cho các slot chưa có trận
+  const slots = Array.from({ length: total }, (_, i) => matches[i] || null)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', minWidth: compact ? 140 : 160 }}>
+      <div style={{
+        textAlign: 'center', fontFamily: 'Oswald', fontWeight: 700,
+        fontSize: 11, color: 'var(--primary)', marginBottom: 8,
+        padding: '3px 0', borderBottom: '2px solid var(--primary)',
+        textTransform: 'uppercase', letterSpacing: 0.5,
+      }}>
+        {label}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap, flex: 1 }}>
+        {slots.map((m, i) => (
+          <div key={i} style={{ height: rowHeight, display: 'flex', alignItems: 'center' }}>
+            <MatchBox match={m} compact={compact} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Bracket chính ────────────────────────────────────────────
+// WC2026: R32=32 trận → R16=16 → QF=8 → SF=4 → Final=1
+// Chia đôi: trái (16→8→4→2 rồi vào SF/Final từ trái), phải tương tự
+// Layout: [R32-L] [conn] [R16-L] [conn] [QF-L] [conn] [SF-L] [conn] [FINAL] [conn] [SF-R] [conn] [QF-R] [conn] [R16-R] [conn] [R32-R]
+
+function TournamentBracket({ knockoutMatches }) {
+  // Phân loại theo vòng
+  const byRound = { r32: [], r16: [], qf: [], sf: [], final: [] }
+  knockoutMatches.forEach(m => {
+    if (byRound[m.round]) byRound[m.round].push(m)
+  })
+
+  // Sắp xếp theo match_number hoặc match_time
+  const sort = (arr) => [...arr].sort((a, b) => (a.match_number || 0) - (b.match_number || 0) || new Date(a.match_time) - new Date(b.match_time))
+  const r32 = sort(byRound.r32)   // tối đa 32 trận
+  const r16 = sort(byRound.r16)   // 16
+  const qf  = sort(byRound.qf)    // 8
+  const sf  = sort(byRound.sf)    // 4
+  const fin = sort(byRound.final) // 1
+
+  // Chia đôi: nửa đầu = trái, nửa sau = phải
+  const half = (arr, n) => {
+    const h = Math.ceil(n / 2)
+    return { left: arr.slice(0, h), right: arr.slice(h) }
+  }
+
+  const r32h = half(r32, 32); const r16h = half(r16, 16)
+  const qfh  = half(qf, 8);   const sfh  = half(sf, 4)
+
+  // Row height và gap cho từng cột (số slot x rowH + gap)
+  // R32: 16 slot mỗi bên, R16: 8, QF: 4, SF: 2, Final: 1
+  const ROW_H = 68   // chiều cao 1 ô (2 dòng đội + padding)
+  const BASE_GAP = 8 // gap tối thiểu
+
+  // Gap tăng dần để các ô căn giữa đúng vị trí
+  // R32 gap = BASE_GAP
+  // R16 gap = R32: (ROW_H + BASE_GAP) * 2 - ROW_H = ROW_H + 2*BASE_GAP
+  const gapFor = (round) => {
+    // Số lần gộp đôi từ R32
+    const folds = { r32: 0, r16: 1, qf: 2, sf: 3, final: 4 }[round] || 0
+    let g = BASE_GAP
+    for (let i = 0; i < folds; i++) g = (ROW_H + g) * 2 - ROW_H
+    return g
+  }
+
+  const rounds = [
+    { key: 'r32', label: '1/32', left: r32h.left, right: r32h.right, total: 16 },
+    { key: 'r16', label: '1/16', left: r16h.left, right: r16h.right, total: 8 },
+    { key: 'qf',  label: 'Tứ Kết', left: qfh.left, right: qfh.right, total: 4 },
+    { key: 'sf',  label: 'Bán Kết', left: sfh.left, right: sfh.right, total: 2 },
+  ]
+
+  const totalH = 16 * ROW_H + 15 * BASE_GAP + 40 // 40 = label header
+
+  return (
+    <div style={{ overflowX: 'auto', overflowY: 'visible', paddingBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, minWidth: 900 }}>
+
+        {/* ── Nhánh TRÁI: R32 → R16 → QF → SF ── */}
+        {rounds.map((r, ri) => (
+          <React.Fragment key={r.key + '-left'}>
+            <RoundCol
+              label={r.label}
+              matches={r.left}
+              total={r.total}
+              rowHeight={ROW_H}
+              gap={gapFor(r.key)}
+              compact={true}
+            />
+            <Connectors
+              count={r.total}
+              direction="right"
+              rowHeight={ROW_H}
+              gap={gapFor(r.key)}
+            />
+          </React.Fragment>
+        ))}
+
+        {/* ── FINAL ở giữa ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 160, paddingTop: 0 }}>
+          <div style={{
+            textAlign: 'center', fontFamily: 'Oswald', fontWeight: 700,
+            fontSize: 11, color: '#c0a000', marginBottom: 8,
+            padding: '3px 0', borderBottom: '2px solid #c0a000',
+            textTransform: 'uppercase', letterSpacing: 1, width: '100%',
+          }}>
+            🏆 Chung Kết
+          </div>
+          {/* Căn dọc vào giữa toàn bộ bracket */}
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: (totalH - 40) / 2 - ROW_H / 2 }}>
+            <MatchBox match={fin[0] || null} />
+          </div>
+        </div>
+
+        {/* ── Nhánh PHẢI: SF → QF → R16 → R32 ── */}
+        {[...rounds].reverse().map((r, ri) => (
+          <React.Fragment key={r.key + '-right'}>
+            <Connectors
+              count={r.total}
+              direction="left"
+              rowHeight={ROW_H}
+              gap={gapFor(r.key)}
+            />
+            <RoundCol
+              label={r.label}
+              matches={r.right}
+              total={r.total}
+              rowHeight={ROW_H}
+              gap={gapFor(r.key)}
+              compact={true}
+            />
+          </React.Fragment>
+        ))}
+      </div>
+
+      <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-muted)', textAlign: 'center' }}>
+        💡 Cuộn ngang để xem toàn bộ · Đội in đậm = đội thắng · TBD = chờ xác định
+      </div>
+    </div>
+  )
+}
+
+// ─── Bảng Group ───────────────────────────────────────────────
 function GroupTable({ groupName, rows, matches }) {
   const [showMatches, setShowMatches] = useState(false)
   const doneMatches = matches.filter(m => m.group_name === groupName && m.result !== null)
@@ -118,54 +366,7 @@ function GroupTable({ groupName, rows, matches }) {
   )
 }
 
-function BracketMatch({ match }) {
-  const homeWin = match?.result === 'home'
-  const awayWin = match?.result === 'away'
-  return (
-    <div style={{
-      background: 'white', border: '1.5px solid var(--border)', borderRadius: 10,
-      overflow: 'hidden', minWidth: 160, flex: 1, maxWidth: 220,
-      boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
-    }}>
-      {match ? (
-        <>
-          <div style={{ padding: '7px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', background: homeWin ? 'rgba(26,111,196,0.08)' : 'white' }}>
-            <span style={{ fontSize: 13, fontWeight: homeWin ? 700 : 400, color: homeWin ? 'var(--primary)' : 'var(--text)' }}>{match.home_team || '?'}</span>
-            {match.result && <span style={{ fontFamily: 'Oswald', fontWeight: 700, color: homeWin ? 'var(--primary)' : 'var(--text-muted)' }}>{match.home_score}</span>}
-          </div>
-          <div style={{ padding: '7px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: awayWin ? 'rgba(26,111,196,0.08)' : 'white' }}>
-            <span style={{ fontSize: 13, fontWeight: awayWin ? 700 : 400, color: awayWin ? 'var(--primary)' : 'var(--text)' }}>{match.away_team || '?'}</span>
-            {match.result && <span style={{ fontFamily: 'Oswald', fontWeight: 700, color: awayWin ? 'var(--primary)' : 'var(--text-muted)' }}>{match.away_score}</span>}
-          </div>
-          {match.penalty_home !== null && match.penalty_home !== undefined && (
-            <div style={{ padding: '3px 12px', fontSize: 10, color: 'var(--text-muted)', background: 'var(--bg)', borderTop: '1px solid var(--border)' }}>
-              🎯 Penalty: {match.penalty_home}–{match.penalty_away}
-            </div>
-          )}
-        </>
-      ) : (
-        <>
-          <div style={{ padding: '7px 12px', fontSize: 13, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>TBD</div>
-          <div style={{ padding: '7px 12px', fontSize: 13, color: 'var(--text-muted)' }}>TBD</div>
-        </>
-      )}
-    </div>
-  )
-}
-
-function BracketRound({ label, matches }) {
-  return (
-    <div style={{ minWidth: 180, flex: 1 }}>
-      <div style={{ textAlign: 'center', fontFamily: 'Oswald', fontWeight: 700, fontSize: 13, color: 'var(--primary)', marginBottom: 10, padding: '4px 0', borderBottom: '2px solid var(--primary)' }}>
-        {label}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {matches.map((m, i) => <BracketMatch key={i} match={m} />)}
-      </div>
-    </div>
-  )
-}
-
+// ─── Main Page ────────────────────────────────────────────────
 export default function StandingsPage() {
   const [tab, setTab] = useState('groups')
   const [matches, setMatches] = useState([])
@@ -190,8 +391,6 @@ export default function StandingsPage() {
   const knockoutMatches = matches.filter(m => m.round !== 'group')
   const standings = computeStandings(groupMatches)
   const groups = 'ABCDEFGHIJKL'.split('').filter(g => standings[g])
-  const knockoutByRound = {}
-  ROUND_ORDER.forEach(r => { knockoutByRound[r] = knockoutMatches.filter(m => m.round === r) })
   const hasKnockout = knockoutMatches.length > 0
 
   if (loading) return (
@@ -265,18 +464,9 @@ export default function StandingsPage() {
               <div style={{ fontSize: 13 }}>Chờ kết thúc vòng bảng (sau 29/6/2026)</div>
             </div>
           ) : (
-            <>
-              <div style={{ overflowX: 'auto', paddingBottom: 12 }}>
-                <div style={{ display: 'flex', gap: 16, minWidth: 600 }}>
-                  {ROUND_ORDER.filter(r => knockoutByRound[r]?.length > 0).map(r => (
-                    <BracketRound key={r} label={ROUND_LABELS[r] || r} matches={knockoutByRound[r]} />
-                  ))}
-                </div>
-              </div>
-              <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)' }}>
-                💡 Cuộn ngang để xem toàn bộ nhánh đấu. Đội in đậm = đội thắng.
-              </div>
-            </>
+            <div className="card" style={{ padding: '16px 12px', overflowX: 'auto' }}>
+              <TournamentBracket knockoutMatches={knockoutMatches} />
+            </div>
           )}
         </>
       )}
