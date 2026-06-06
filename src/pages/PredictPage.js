@@ -98,9 +98,13 @@ function KnockoutMatchCard({ match, prediction, onPredictKnockout }) {
     if (homeScore === '' || awayScore === '') return toast('Nhập tỷ số dự đoán!', 'error')
     const h = parseInt(homeScore), a = parseInt(awayScore)
     if (isNaN(h) || isNaN(a) || h < 0 || a < 0) return toast('Tỷ số không hợp lệ!', 'error')
-    // Kiểm tra tỷ số phải khớp với đội được chọn thắng
-    if (winner === match.home_team && h <= a) return toast(`Tỷ số phải phản ánh ${match.home_team} thắng (ví dụ: 2-1)`, 'error')
-    if (winner === match.away_team && a <= h) return toast(`Tỷ số phải phản ánh ${match.away_team} thắng (ví dụ: 1-2)`, 'error')
+    // Cho phép hòa (đá penalty) — chỉ cần tỷ số không mâu thuẫn với đội thắng
+    // Tức là nếu tỷ số không hòa thì đội thắng phải khớp
+    if (h !== a) {
+      if (winner === match.home_team && h < a) return toast(`Tỷ số mâu thuẫn: ${match.home_team} thua nhưng được chọn đi tiếp`, 'error')
+      if (winner === match.away_team && a < h) return toast(`Tỷ số mâu thuẫn: ${match.away_team} thua nhưng được chọn đi tiếp`, 'error')
+    }
+    // Nếu hòa thì OK — winner là đội thắng penalty
     setSaving(true)
     await onPredictKnockout(match.id, { winner, homeScore: h, awayScore: a })
     setSaving(false)
