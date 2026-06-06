@@ -41,29 +41,14 @@ const BASE_GAP = 8   // gap nhỏ nhất (giữa 2 trận R32)
 // Tổng chiều cao cố định cho 8 slot R32 mỗi nhánh (16 trận tổng / 2)
 const TOTAL_H = 8 * ROW_H + 7 * BASE_GAP  // = 568
 
-// Gap của vòng có n slot sao cho tổng chiều cao = TOTAL_H
-const gapFor = (n) => n === 1 ? 0 : (TOTAL_H - n * ROW_H) / (n - 1)
+// Gap tính đệ quy: gap_next = ROW_H + 2*gap_prev
+// Đảm bảo center[i] vòng sau = mid(pair[2i,2i+1]) vòng trước với mọi i
+const GAP_CONFIG = { r32: 8, r16: 80, qf: 224, sf: 512, final: 0 }
 
-// paddingTop của cột để căn tâm ô[0] với tâm cặp ô vòng trước
-// r32: pt=0, r16: pt=ROW_H/2+gap_r32/2, qf: pt_r16+ROW_H/2+gap_r16/2, ...
-const paddingTopFor = (() => {
-  const rounds = [
-    { key: 'r32', n: 8 },
-    { key: 'r16', n: 4 },
-    { key: 'qf',  n: 2 },
-    { key: 'sf',  n: 1 },
-    { key: 'final', n: 1 },
-  ]
-  const pts = { r32: 0 }
-  let pt = 0
-  for (let i = 0; i < rounds.length - 1; i++) {
-    const { key, n } = rounds[i]
-    const g = gapFor(n)
-    pt = pt + ROW_H / 2 + g / 2
-    pts[rounds[i + 1].key] = pt
-  }
-  return pts
-})()
+// paddingTop: pt_next = pt_prev + 0.5*(ROW_H + gap_prev)
+const paddingTopFor = { r32: 0, r16: 36, qf: 108, sf: 252, final: 252 }
+
+const gapFor = (roundKey) => GAP_CONFIG[roundKey] ?? 0
 
 // ─── 1 ô trận đấu ────────────────────────────────────────────
 function MatchBox({ match }) {
@@ -123,7 +108,7 @@ function MatchBox({ match }) {
 
 // ─── 1 cột vòng đấu (trái hoặc phải) ─────────────────────────
 function RoundCol({ roundKey, label, matches, totalSlots, isGold }) {
-  const gap   = gapFor(totalSlots)
+  const gap   = gapFor(roundKey)
   const padTop = paddingTopFor[roundKey] || 0
   const slots = Array.from({ length: totalSlots }, (_, i) => matches[i] || null)
 
@@ -157,7 +142,7 @@ function RoundCol({ roundKey, label, matches, totalSlots, isGold }) {
 //            'left'  = cột bên phải bracket (gộp sang trái)
 function Connector({ fromSlots, fromRoundKey, direction }) {
   const W = 20
-  const gap = gapFor(fromSlots)
+  const gap = gapFor(fromRoundKey)
   const padTop = paddingTopFor[fromRoundKey] || 0
   const pairs = fromSlots / 2
   const svgH = TOTAL_H + 30 // thêm buffer
