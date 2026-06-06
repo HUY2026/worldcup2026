@@ -55,11 +55,11 @@ function Header({ player, isAdmin, onLogout }) {
           <NavLink to="/" className={({ isActive }) => `nav-btn ${isActive ? 'active' : ''}`}>
             ⚽ Dự Đoán
           </NavLink>
-          <NavLink to="/leaderboard" className={({ isActive }) => `nav-btn ${isActive ? 'active' : ''}`}>
-            🏅 Bảng Xếp Hạng
-          </NavLink>
           <NavLink to="/standings" className={({ isActive }) => `nav-btn ${isActive ? 'active' : ''}`}>
             📊 Bảng Đấu
+          </NavLink>
+          <NavLink to="/leaderboard" className={({ isActive }) => `nav-btn ${isActive ? 'active' : ''}`}>
+            🏅 Bảng Xếp Hạng
           </NavLink>
           {isAdmin && (
             <NavLink to="/admin" className={({ isActive }) => `nav-btn ${isActive ? 'active' : ''}`}>
@@ -90,11 +90,11 @@ function BottomNav({ isAdmin }) {
       <NavLink to="/" end className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}>
         <span>⚽</span><span>Dự Đoán</span>
       </NavLink>
-      <NavLink to="/leaderboard" className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}>
-        <span>🏅</span><span>Xếp Hạng</span>
-      </NavLink>
       <NavLink to="/standings" className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}>
         <span>📊</span><span>Bảng Đấu</span>
+      </NavLink>
+      <NavLink to="/leaderboard" className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}>
+        <span>🏅</span><span>Xếp Hạng</span>
       </NavLink>
       {isAdmin && (
         <NavLink to="/admin" className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}>
