@@ -96,8 +96,13 @@ function KnockoutMatchCard({ match, prediction, onPredictKnockout }) {
   async function handleSave() {
     if (!winner) return toast('Chọn đội đi tiếp trước!', 'error')
     if (homeScore === '' || awayScore === '') return toast('Nhập tỷ số dự đoán!', 'error')
+    const h = parseInt(homeScore), a = parseInt(awayScore)
+    if (isNaN(h) || isNaN(a) || h < 0 || a < 0) return toast('Tỷ số không hợp lệ!', 'error')
+    // Kiểm tra tỷ số phải khớp với đội được chọn thắng
+    if (winner === match.home_team && h <= a) return toast(`Tỷ số phải phản ánh ${match.home_team} thắng (ví dụ: 2-1)`, 'error')
+    if (winner === match.away_team && a <= h) return toast(`Tỷ số phải phản ánh ${match.away_team} thắng (ví dụ: 1-2)`, 'error')
     setSaving(true)
-    await onPredictKnockout(match.id, { winner, homeScore: +homeScore, awayScore: +awayScore })
+    await onPredictKnockout(match.id, { winner, homeScore: h, awayScore: a })
     setSaving(false)
   }
 
@@ -280,6 +285,34 @@ export default function PredictPage() {
 
   return (
     <div>
+      {/* Scoring rules info */}
+      <div style={{
+        background: 'linear-gradient(135deg, #f0f7ff, #e8f4ff)',
+        border: '1px solid #b3d4f5', borderRadius: 'var(--radius)',
+        padding: '14px 18px', marginBottom: 16, fontSize: 13,
+      }}>
+        <div style={{ fontFamily: 'Oswald', fontWeight: 700, fontSize: 15, color: 'var(--primary)', marginBottom: 10 }}>
+          📊 Cách tính điểm
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ background: 'var(--primary)', color: 'white', borderRadius: 6, padding: '2px 9px', fontFamily: 'Oswald', fontWeight: 700, fontSize: 14 }}>+2đ</span>
+            <span>Đoán đúng kết quả vòng bảng (T/H/B)</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ background: '#2ecc71', color: 'white', borderRadius: 6, padding: '2px 9px', fontFamily: 'Oswald', fontWeight: 700, fontSize: 14 }}>+3đ</span>
+            <span>Đoán đúng đội thắng vòng loại trực tiếp</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ background: '#f39c12', color: 'white', borderRadius: 6, padding: '2px 9px', fontFamily: 'Oswald', fontWeight: 700, fontSize: 14 }}>+7đ</span>
+            <span>Đoán đúng cả đội thắng <strong>lẫn tỷ số chính xác</strong></span>
+          </div>
+        </div>
+        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)', borderTop: '1px solid #c8e0f7', paddingTop: 8 }}>
+          💡 Trận bắt đầu hoặc đã có kết quả là <strong>khóa dự đoán</strong>. Hãy dự đoán sớm trước giờ đấu!
+        </div>
+      </div>
+
       {/* Stats */}
       <div className="stat-grid">
         <div className="stat-card">
