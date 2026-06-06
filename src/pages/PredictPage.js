@@ -6,7 +6,7 @@ import { toVNTime, toVNTimeOnly, toVNDate, isMatchLocked, ROUND_LABELS, ROUND_OR
 
 // ─── Group Match Card ─────────────────────────────────────────
 function GroupMatchCard({ match, prediction, onPredict }) {
-  const locked = isMatchLocked(match.match_time)
+  const locked = isMatchLocked(match.match_time) || (match.result !== null && match.result !== undefined)
   const hasResult = match.result !== null && match.result !== undefined
 
   function getResultLabel(result) {
@@ -78,7 +78,7 @@ function GroupMatchCard({ match, prediction, onPredict }) {
 
 // ─── Knockout Match Card ──────────────────────────────────────
 function KnockoutMatchCard({ match, prediction, onPredictKnockout }) {
-  const locked = isMatchLocked(match.match_time)
+  const locked = isMatchLocked(match.match_time) || (match.result !== null && match.result !== undefined)
   const hasResult = match.result !== null && match.result !== undefined
   const [winner, setWinner] = useState(prediction?.predicted_winner || '')
   const [homeScore, setHomeScore] = useState(prediction?.predicted_home_score ?? '')
@@ -268,7 +268,7 @@ export default function PredictPage() {
 
   const groupMatches = matches.filter(m => m.round === 'group')
   const knockoutMatches = matches.filter(m => m.round !== 'group')
-  const availableRounds = [...new Set(knockoutMatches.map(m => m.round))]
+  const availableRounds = ROUND_ORDER.filter(r => knockoutMatches.some(m => m.round === r))
 
   // Groups for tabs
   const groups = [...new Set(groupMatches.map(m => m.group_name).filter(Boolean))].sort()
