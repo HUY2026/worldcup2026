@@ -38,8 +38,8 @@ function computeStandings(matches) {
 // ─── Hằng số layout bracket ──────────────────────────────────
 const ROW_H   = 64   // chiều cao 1 ô match
 const BASE_GAP = 8   // gap nhỏ nhất (giữa 2 trận R32)
-// Tổng chiều cao cố định cho 16 slot R32
-const TOTAL_H = 16 * ROW_H + 15 * BASE_GAP  // = 1144
+// Tổng chiều cao cố định cho 8 slot R32 mỗi nhánh (16 trận tổng / 2)
+const TOTAL_H = 8 * ROW_H + 7 * BASE_GAP  // = 568
 
 // Gap của vòng có n slot sao cho tổng chiều cao = TOTAL_H
 const gapFor = (n) => n === 1 ? 0 : (TOTAL_H - n * ROW_H) / (n - 1)
@@ -48,10 +48,10 @@ const gapFor = (n) => n === 1 ? 0 : (TOTAL_H - n * ROW_H) / (n - 1)
 // r32: pt=0, r16: pt=ROW_H/2+gap_r32/2, qf: pt_r16+ROW_H/2+gap_r16/2, ...
 const paddingTopFor = (() => {
   const rounds = [
-    { key: 'r32', n: 16 },
-    { key: 'r16', n: 8  },
-    { key: 'qf',  n: 4  },
-    { key: 'sf',  n: 2  },
+    { key: 'r32', n: 8 },
+    { key: 'r16', n: 4 },
+    { key: 'qf',  n: 2 },
+    { key: 'sf',  n: 1 },
     { key: 'final', n: 1 },
   ]
   const pts = { r32: 0 }
@@ -213,16 +213,16 @@ function TournamentBracket({ knockoutMatches }) {
 
   // Cấu hình từng vòng
   const leftRounds = [
-    { key:'r32', label:'1/32',    matches: L(r32,32), total: 16 },
-    { key:'r16', label:'1/16',    matches: L(r16,16), total: 8  },
-    { key:'qf',  label:'Tứ Kết', matches: L(qf,8),  total: 4  },
-    { key:'sf',  label:'Bán Kết',matches: L(sf,4),  total: 2  },
+    { key:'r32', label:'1/32',    matches: L(r32,16), total: 8 },
+    { key:'r16', label:'1/16',    matches: L(r16,8),  total: 4 },
+    { key:'qf',  label:'Tứ Kết', matches: L(qf,4),  total: 2 },
+    { key:'sf',  label:'Bán Kết',matches: L(sf,2),  total: 1 },
   ]
   const rightRounds = [
-    { key:'sf',  label:'Bán Kết',matches: R(sf,4),  total: 2  },
-    { key:'qf',  label:'Tứ Kết', matches: R(qf,8),  total: 4  },
-    { key:'r16', label:'1/16',    matches: R(r16,16), total: 8  },
-    { key:'r32', label:'1/32',    matches: R(r32,32), total: 16 },
+    { key:'sf',  label:'Bán Kết',matches: R(sf,2),  total: 1 },
+    { key:'qf',  label:'Tứ Kết', matches: R(qf,4),  total: 2 },
+    { key:'r16', label:'1/16',    matches: R(r16,8),  total: 4 },
+    { key:'r32', label:'1/32',    matches: R(r32,16), total: 8 },
   ]
 
   return (
@@ -410,19 +410,46 @@ export default function StandingsPage() {
               <GroupTable groupName={selectedGroup} rows={standings[selectedGroup]} matches={groupMatches} />
               {(() => {
                 const upcoming = groupMatches.filter(m => m.group_name === selectedGroup && m.result === null)
-                if (!upcoming.length) return null
+                const done = groupMatches.filter(m => m.group_name === selectedGroup && m.result !== null)
+                  .sort((a, b) => new Date(b.match_time) - new Date(a.match_time))
                 return (
-                  <div>
-                    <div className="section-header" style={{ marginBottom: 10 }}>
-                      <span className="section-title">📋 Lịch sắp đấu — Bảng {selectedGroup}</span>
-                    </div>
-                    {upcoming.map(m => (
-                      <div key={m.id} className="card" style={{ marginBottom: 8, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontWeight: 600, fontSize: 13 }}>{m.home_team} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>vs</span> {m.away_team}</span>
-                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{toVNTime(m.match_time)}</span>
+                  <>
+                    {upcoming.length > 0 && (
+                      <div>
+                        <div className="section-header" style={{ marginBottom: 10 }}>
+                          <span className="section-title">📋 Lịch sắp đấu — Bảng {selectedGroup}</span>
+                        </div>
+                        {upcoming.map(m => (
+                          <div key={m.id} className="card" style={{ marginBottom: 8, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 600, fontSize: 13 }}>{m.home_team} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>vs</span> {m.away_team}</span>
+                            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{toVNTime(m.match_time)}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    )}
+                    {done.length > 0 && (
+                      <div style={{ marginTop: upcoming.length > 0 ? 16 : 0 }}>
+                        <div className="section-header" style={{ marginBottom: 10 }}>
+                          <span className="section-title">✅ Kết quả đã đấu — Bảng {selectedGroup}</span>
+                        </div>
+                        {done.map(m => {
+                          const homeWin = m.result === 'home', awayWin = m.result === 'away'
+                          return (
+                            <div key={m.id} className="card" style={{ marginBottom: 8, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontWeight: homeWin ? 700 : 400, fontSize: 13, color: homeWin ? 'var(--primary)' : 'var(--text)', flex: 1 }}>{m.home_team}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '0 12px' }}>
+                                <span style={{ fontFamily: 'Oswald', fontWeight: 700, fontSize: 18, color: homeWin ? 'var(--primary)' : 'var(--text-muted)' }}>{m.home_score}</span>
+                                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>-</span>
+                                <span style={{ fontFamily: 'Oswald', fontWeight: 700, fontSize: 18, color: awayWin ? 'var(--primary)' : 'var(--text-muted)' }}>{m.away_score}</span>
+                              </div>
+                              <span style={{ fontWeight: awayWin ? 700 : 400, fontSize: 13, color: awayWin ? 'var(--primary)' : 'var(--text)', flex: 1, textAlign: 'right' }}>{m.away_team}</span>
+                              <span style={{ marginLeft: 12, fontSize: 11, color: 'var(--text-muted)' }}>{toVNTime(m.match_time)}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </>
                 )
               })()}
             </>
