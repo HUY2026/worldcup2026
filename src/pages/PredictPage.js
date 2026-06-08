@@ -11,28 +11,65 @@ const CACHE_TTL = 30 * 60 * 1000 // 30 phút
 
 // Map tên đội VN → tên tiếng Anh để match với API
 const TEAM_NAME_MAP = {
-  'Hàn Quốc': 'South Korea', 'Nam Phi': 'South Africa',
-  'Séc': 'Czech Republic', 'Mỹ': 'USA', 'Áo': 'Austria',
-  'Hà Lan': 'Netherlands', 'Anh': 'England', 'Pháp': 'France',
-  'Đức': 'Germany', 'Tây Ban Nha': 'Spain', 'Bồ Đào Nha': 'Portugal',
-  'Nhật Bản': 'Japan', 'Úc': 'Australia', 'Thụy Sĩ': 'Switzerland',
-  'Ba Lan': 'Poland', 'Đan Mạch': 'Denmark', 'Bỉ': 'Belgium',
-  'Ả Rập Saudi': 'Saudi Arabia', 'Bosnia và Herzegovina': 'Bosnia and Herzegovina',
-  'Bosnia': 'Bosnia and Herzegovina', 'Bắc Ireland': 'Northern Ireland',
-  'Cộng hòa Ireland': 'Republic of Ireland', 'Ivory Coast': 'Ivory Coast',
-  'Bờ Biển Ngà': 'Ivory Coast', 'Thổ Nhĩ Kỳ': 'Turkey',
-  'Nga': 'Russia', 'Ukraine': 'Ukraine', 'Albania': 'Albania',
-  'Mexico': 'Mexico', 'Brazil': 'Brazil', 'Argentina': 'Argentina',
-  'Canada': 'Canada', 'Morocco': 'Morocco', 'Senegal': 'Senegal',
-  'Ecuador': 'Ecuador', 'Croatia': 'Croatia', 'Uruguay': 'Uruguay',
-  'Ghana': 'Ghana', 'Cameroon': 'Cameroon', 'Serbia': 'Serbia',
-  'Tunisia': 'Tunisia', 'Wales': 'Wales', 'Iran': 'Iran', 'Qatar': 'Qatar',
-  'Costa Rica': 'Costa Rica', 'Colombia': 'Colombia', 'Peru': 'Peru',
-  'Venezuela': 'Venezuela', 'Chile': 'Chile', 'Paraguay': 'Paraguay',
-  'Bolivia': 'Bolivia', 'Panama': 'Panama', 'Honduras': 'Honduras',
-  'Jamaica': 'Jamaica', 'Guatemala': 'Guatemala', 'El Salvador': 'El Salvador',
-  'Nigeria': 'Nigeria', 'Ai Cập': 'Egypt', 'Algeria': 'Algeria',
-  'Tanzania': 'Tanzania', 'Congo': 'DR Congo',
+  // Châu Á
+  'Hàn Quốc': 'South Korea',
+  'Nhật Bản': 'Japan',
+  'Úc': 'Australia',
+  'Iran': 'Iran',
+  'Saudi Arabia': 'Saudi Arabia',
+  'Iraq': 'Iraq',
+  'Jordan': 'Jordan',
+  'Uzbekistan': 'Uzbekistan',
+  'Qatar': 'Qatar',
+
+  // Châu Âu
+  'Anh': 'England',
+  'Pháp': 'France',
+  'Đức': 'Germany',
+  'Tây Ban Nha': 'Spain',
+  'Bồ Đào Nha': 'Portugal',
+  'Hà Lan': 'Netherlands',
+  'Bỉ': 'Belgium',
+  'Áo': 'Austria',
+  'Séc': 'Czech Republic',
+  'Croatia': 'Croatia',
+  'Scotland': 'Scotland',
+  'Na Uy': 'Norway',
+  'Thụy Sĩ': 'Switzerland',
+  'Thụy Điển': 'Sweden',
+  'Thổ Nhĩ Kỳ': 'Turkey',
+  'Bosnia và Herzegovina': 'Bosnia and Herzegovina',
+
+  // Châu Mỹ
+  'Mỹ': 'United States',
+  'Mexico': 'Mexico',
+  'Canada': 'Canada',
+  'Brasil': 'Brazil',
+  'Argentina': 'Argentina',
+  'Colombia': 'Colombia',
+  'Uruguay': 'Uruguay',
+  'Ecuador': 'Ecuador',
+  'Paraguay': 'Paraguay',
+  'Chile': 'Chile',
+  'Panama': 'Panama',
+  'Haiti': 'Haiti',
+  'Curaçao': 'Curacao',
+  'Cape Verde': 'Cape Verde',
+
+  // Châu Phi
+  'Nam Phi': 'South Africa',
+  'Maroc': 'Morocco',
+  'Senegal': 'Senegal',
+  'Ghana': 'Ghana',
+  'Ai Cập': 'Egypt',
+  'Algeria': 'Algeria',
+  'Tunisia': 'Tunisia',
+  'Cameroon': 'Cameroon',
+  'Bờ Biển Ngà': 'Ivory Coast',
+  'DR Congo': 'DR Congo',
+
+  // Châu Đại Dương
+  'New Zealand': 'New Zealand',
 }
 
 function toEn(name) { return TEAM_NAME_MAP[name] || name }
@@ -44,13 +81,41 @@ function norm(s) {
     .replace(/\s+/g, ' ').trim()
 }
 
+// Alias thêm để match các tên API hay dùng khác với FIFA chuẩn
+const API_ALIASES = {
+  'usa': 'united states',
+  'united states': 'united states',
+  'us': 'united states',
+  'brasil': 'brazil',
+  'morocco': 'morocco',
+  'maroc': 'morocco',
+  'ivory coast': 'ivory coast',
+  'cote divoire': 'ivory coast',
+  "côte d'ivoire": 'ivory coast',
+  'curacao': 'curacao',
+  'curaçao': 'curacao',
+  'south korea': 'south korea',
+  'korea republic': 'south korea',
+  'republic of korea': 'south korea',
+  'dr congo': 'dr congo',
+  'congo dr': 'dr congo',
+  'democratic republic of congo': 'dr congo',
+  'bosnia and herzegovina': 'bosnia and herzegovina',
+  'bosnia & herzegovina': 'bosnia and herzegovina',
+  'czech republic': 'czech republic',
+  'czechia': 'czech republic',
+  'turkey': 'turkey',
+  'türkiye': 'turkey',
+}
+
+function resolveAlias(s) { return API_ALIASES[s] || s }
+
 // Kiểm tra 2 tên đội có match nhau không
 function teamsMatch(apiName, localName) {
-  const a = norm(apiName), b = norm(toEn(localName))
+  const a = resolveAlias(norm(apiName))
+  const b = resolveAlias(norm(toEn(localName)))
   if (a === b) return true
-  // Một bên chứa bên kia (xử lý "South Korea" vs "Korea Republic")
   if (a.includes(b) || b.includes(a)) return true
-  // Từ đầu tiên match (xử lý "Switzerland" vs "Swiss")
   const aw = a.split(' '), bw = b.split(' ')
   if (aw[0] === bw[0] && aw[0].length > 3) return true
   return false
