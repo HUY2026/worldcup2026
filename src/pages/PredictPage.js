@@ -11,46 +11,74 @@ const CACHE_TTL = 30 * 60 * 1000 // 30 phút
 
 // Map tên đội VN → tên tiếng Anh để match với API
 const TEAM_NAME_MAP = {
-  'Hàn Quốc': 'South Korea', 'Mexico': 'Mexico', 'Nam Phi': 'South Africa',
+  'Hàn Quốc': 'South Korea', 'Nam Phi': 'South Africa',
   'Séc': 'Czech Republic', 'Mỹ': 'USA', 'Áo': 'Austria',
   'Hà Lan': 'Netherlands', 'Anh': 'England', 'Pháp': 'France',
   'Đức': 'Germany', 'Tây Ban Nha': 'Spain', 'Bồ Đào Nha': 'Portugal',
-  'Brazil': 'Brazil', 'Argentina': 'Argentina', 'Nhật Bản': 'Japan',
-  'Úc': 'Australia', 'Canada': 'Canada', 'Morocco': 'Morocco',
-  'Senegal': 'Senegal', 'Ecuador': 'Ecuador', 'Croatia': 'Croatia',
-  'Thụy Sĩ': 'Switzerland', 'Uruguay': 'Uruguay', 'Ghana': 'Ghana',
-  'Cameroon': 'Cameroon', 'Serbia': 'Serbia', 'Tunisia': 'Tunisia',
+  'Nhật Bản': 'Japan', 'Úc': 'Australia', 'Thụy Sĩ': 'Switzerland',
   'Ba Lan': 'Poland', 'Đan Mạch': 'Denmark', 'Bỉ': 'Belgium',
-  'Wales': 'Wales', 'Iran': 'Iran', 'Qatar': 'Qatar',
-  'Ả Rập Saudi': 'Saudi Arabia', 'Costa Rica': 'Costa Rica',
+  'Ả Rập Saudi': 'Saudi Arabia', 'Bosnia và Herzegovina': 'Bosnia and Herzegovina',
+  'Bosnia': 'Bosnia and Herzegovina', 'Bắc Ireland': 'Northern Ireland',
+  'Cộng hòa Ireland': 'Republic of Ireland', 'Ivory Coast': 'Ivory Coast',
+  'Bờ Biển Ngà': 'Ivory Coast', 'Thổ Nhĩ Kỳ': 'Turkey',
+  'Nga': 'Russia', 'Ukraine': 'Ukraine', 'Albania': 'Albania',
+  'Mexico': 'Mexico', 'Brazil': 'Brazil', 'Argentina': 'Argentina',
+  'Canada': 'Canada', 'Morocco': 'Morocco', 'Senegal': 'Senegal',
+  'Ecuador': 'Ecuador', 'Croatia': 'Croatia', 'Uruguay': 'Uruguay',
+  'Ghana': 'Ghana', 'Cameroon': 'Cameroon', 'Serbia': 'Serbia',
+  'Tunisia': 'Tunisia', 'Wales': 'Wales', 'Iran': 'Iran', 'Qatar': 'Qatar',
+  'Costa Rica': 'Costa Rica', 'Colombia': 'Colombia', 'Peru': 'Peru',
+  'Venezuela': 'Venezuela', 'Chile': 'Chile', 'Paraguay': 'Paraguay',
+  'Bolivia': 'Bolivia', 'Panama': 'Panama', 'Honduras': 'Honduras',
+  'Jamaica': 'Jamaica', 'Guatemala': 'Guatemala', 'El Salvador': 'El Salvador',
+  'Nigeria': 'Nigeria', 'Ai Cập': 'Egypt', 'Algeria': 'Algeria',
+  'Tanzania': 'Tanzania', 'Congo': 'DR Congo',
 }
 
 function toEn(name) { return TEAM_NAME_MAP[name] || name }
 
+// Normalize chuỗi để so sánh: lowercase, bỏ dấu câu, bỏ khoảng trắng thừa
+function norm(s) {
+  return s.toLowerCase()
+    .replace(/[^a-z0-9 ]/g, '')
+    .replace(/\s+/g, ' ').trim()
+}
+
+// Kiểm tra 2 tên đội có match nhau không
+function teamsMatch(apiName, localName) {
+  const a = norm(apiName), b = norm(toEn(localName))
+  if (a === b) return true
+  // Một bên chứa bên kia (xử lý "South Korea" vs "Korea Republic")
+  if (a.includes(b) || b.includes(a)) return true
+  // Từ đầu tiên match (xử lý "Switzerland" vs "Swiss")
+  const aw = a.split(' '), bw = b.split(' ')
+  if (aw[0] === bw[0] && aw[0].length > 3) return true
+  return false
+}
+
 async function fetchOddsForMatch(homeTeam, awayTeam) {
-  // Tìm trận đấu trong danh sách odds WC2026
   try {
     const res = await fetch(
       `https://api.the-odds-api.com/v4/sports/soccer_fifa_world_cup/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal`
     )
     if (!res.ok) return null
     const games = await res.json()
-    const hEn = toEn(homeTeam).toLowerCase()
-    const aEn = toEn(awayTeam).toLowerCase()
-    const game = games.find(g => {
-      const ht = g.home_team.toLowerCase(), at = g.away_team.toLowerCase()
-      return (ht.includes(hEn) || hEn.includes(ht)) && (at.includes(aEn) || aEn.includes(at))
-    })
+    const game = games.find(g =>
+      teamsMatch(g.home_team, homeTeam) && teamsMatch(g.away_team, awayTeam)
+      || teamsMatch(g.home_team, awayTeam) && teamsMatch(g.away_team, homeTeam)
+    )
     if (!game) return null
-    // Lấy bookmaker đầu tiên có market h2h
     const bm = game.bookmakers?.[0]
     const market = bm?.markets?.find(m => m.key === 'h2h')
     if (!market) return null
+    // Xác định home/away đúng chiều (API có thể đảo ngược)
+    const flipped = teamsMatch(game.home_team, awayTeam)
     const outcomes = market.outcomes
+    const findOdds = (name) => outcomes.find(o => teamsMatch(o.name, name))?.price
     return {
-      home: outcomes.find(o => o.name.toLowerCase().includes(toEn(homeTeam).toLowerCase().split(' ')[0]))?.price,
+      home: findOdds(homeTeam),
       draw: outcomes.find(o => o.name === 'Draw')?.price,
-      away: outcomes.find(o => o.name.toLowerCase().includes(toEn(awayTeam).toLowerCase().split(' ')[0]))?.price,
+      away: findOdds(awayTeam),
       bookmaker: bm.title,
     }
   } catch { return null }
