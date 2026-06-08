@@ -10,7 +10,7 @@ export default function AdminPage() {
   const [scoring, setScoring] = useState({})
   const [inputs, setInputs] = useState({})
   const [showAddModal, setShowAddModal] = useState(false)
-  const [addForm, setAddForm] = useState({ home: '', away: '', round: 'r32', date: '' })
+  const [addForm, setAddForm] = useState({ home: '', away: '', round: 'r32', date: '', slot: '' })
   const [addLoading, setAddLoading] = useState(false)
 
   useEffect(() => { loadMatches() }, [])
@@ -124,9 +124,13 @@ export default function AdminPage() {
   }
 
   async function handleAddKnockoutMatch() {
-    const { home, away, round, date } = addForm
+    const { home, away, round, date, slot } = addForm
     if (!home.trim() || !away.trim()) return toast('Nhập tên 2 đội!', 'error')
     if (!date) return toast('Nhập ngày giờ thi đấu!', 'error')
+    const slotMax = { r32: 16, r16: 8, qf: 4, sf: 2, final: 1 }
+    const slotNum = parseInt(slot)
+    if (!slot || isNaN(slotNum) || slotNum < 1 || slotNum > (slotMax[round] || 16))
+      return toast(`Nhập số ô (1–${slotMax[round] || 16}) cho vòng này!`, 'error')
     setAddLoading(true)
     try {
       const vnDate = new Date(date + ':00+07:00')
@@ -134,12 +138,12 @@ export default function AdminPage() {
       const { error } = await supabase.from('matches').insert({
         round, home_team: home.trim(), away_team: away.trim(),
         match_time: vnDate.toISOString(),
-        match_number: Math.floor(Date.now() / 1000)
+        match_number: slotNum
       })
       if (error) throw error
       toast('✅ Đã thêm trận đấu!', 'success')
       setShowAddModal(false)
-      setAddForm({ home: '', away: '', round: 'r32', date: '' })
+      setAddForm({ home: '', away: '', round: 'r32', date: '', slot: '' })
       loadMatches()
     } catch (err) {
       console.error(err)
@@ -237,6 +241,22 @@ export default function AdminPage() {
                 <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Ngày & Giờ (theo giờ VN)</label>
                 <input type="datetime-local" style={{ width: '100%', padding: '8px 12px', fontSize: 14, borderRadius: 8, border: '1.5px solid var(--border)', outline: 'none', boxSizing: 'border-box' }}
                   value={addForm.date} onChange={e => setAddForm(f => ({ ...f, date: e.target.value }))} />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+                  Số ô trong bracket&nbsp;
+                  <span style={{ color: 'var(--primary)' }}>
+                    (1–{ {r32:16,r16:8,qf:4,sf:2,final:1}[addForm.round] })
+                  </span>
+                </label>
+                <input type="number" min={1} max={ {r32:16,r16:8,qf:4,sf:2,final:1}[addForm.round] }
+                  style={{ width: '100%', padding: '8px 12px', fontSize: 14, borderRadius: 8, border: '1.5px solid var(--border)', outline: 'none', boxSizing: 'border-box' }}
+                  placeholder={`Ô số mấy? (1–${ {r32:16,r16:8,qf:4,sf:2,final:1}[addForm.round] })`}
+                  value={addForm.slot} onChange={e => setAddForm(f => ({ ...f, slot: e.target.value }))} />
+                <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)', background: 'var(--bg)', borderRadius: 6, padding: '6px 10px', lineHeight: 1.6 }}>
+                  💡 Ô 1–8 = nhánh <strong>trái</strong>, ô 9–16 = nhánh <strong>phải</strong> (R32)<br/>
+                  Ô lẻ = đội trên, ô chẵn = đội dưới trong cùng cặp
+                </div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
