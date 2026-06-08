@@ -1,13 +1,127 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../App'
 import { toast } from '../App'
 import { toVNTime, toVNTimeOnly, toVNDate, isMatchLocked, ROUND_LABELS, ROUND_ORDER } from '../lib/utils'
 
+// ─── Odds API ─────────────────────────────────────────────────
+const ODDS_API_KEY = process.env.REACT_APP_ODDS_API_KEY || 'd8f7276c63549adc62d49712f9ad60fd'
+const ODDS_CACHE = {} // { matchId: { data, ts } }
+const CACHE_TTL = 30 * 60 * 1000 // 30 phút
+
+// Map tên đội VN → tên tiếng Anh để match với API
+const TEAM_NAME_MAP = {
+  'Hàn Quốc': 'South Korea', 'Mexico': 'Mexico', 'Nam Phi': 'South Africa',
+  'Séc': 'Czech Republic', 'Mỹ': 'USA', 'Áo': 'Austria',
+  'Hà Lan': 'Netherlands', 'Anh': 'England', 'Pháp': 'France',
+  'Đức': 'Germany', 'Tây Ban Nha': 'Spain', 'Bồ Đào Nha': 'Portugal',
+  'Brazil': 'Brazil', 'Argentina': 'Argentina', 'Nhật Bản': 'Japan',
+  'Úc': 'Australia', 'Canada': 'Canada', 'Morocco': 'Morocco',
+  'Senegal': 'Senegal', 'Ecuador': 'Ecuador', 'Croatia': 'Croatia',
+  'Thụy Sĩ': 'Switzerland', 'Uruguay': 'Uruguay', 'Ghana': 'Ghana',
+  'Cameroon': 'Cameroon', 'Serbia': 'Serbia', 'Tunisia': 'Tunisia',
+  'Ba Lan': 'Poland', 'Đan Mạch': 'Denmark', 'Bỉ': 'Belgium',
+  'Wales': 'Wales', 'Iran': 'Iran', 'Qatar': 'Qatar',
+  'Ả Rập Saudi': 'Saudi Arabia', 'Costa Rica': 'Costa Rica',
+}
+
+function toEn(name) { return TEAM_NAME_MAP[name] || name }
+
+async function fetchOddsForMatch(homeTeam, awayTeam) {
+  // Tìm trận đấu trong danh sách odds WC2026
+  try {
+    const res = await fetch(
+      `https://api.the-odds-api.com/v4/sports/soccer_fifa_world_cup/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal`
+    )
+    if (!res.ok) return null
+    const games = await res.json()
+    const hEn = toEn(homeTeam).toLowerCase()
+    const aEn = toEn(awayTeam).toLowerCase()
+    const game = games.find(g => {
+      const ht = g.home_team.toLowerCase(), at = g.away_team.toLowerCase()
+      return (ht.includes(hEn) || hEn.includes(ht)) && (at.includes(aEn) || aEn.includes(at))
+    })
+    if (!game) return null
+    // Lấy bookmaker đầu tiên có market h2h
+    const bm = game.bookmakers?.[0]
+    const market = bm?.markets?.find(m => m.key === 'h2h')
+    if (!market) return null
+    const outcomes = market.outcomes
+    return {
+      home: outcomes.find(o => o.name.toLowerCase().includes(toEn(homeTeam).toLowerCase().split(' ')[0]))?.price,
+      draw: outcomes.find(o => o.name === 'Draw')?.price,
+      away: outcomes.find(o => o.name.toLowerCase().includes(toEn(awayTeam).toLowerCase().split(' ')[0]))?.price,
+      bookmaker: bm.title,
+    }
+  } catch { return null }
+}
+
+function useOdds(matchId, homeTeam, awayTeam, locked) {
+  const [odds, setOdds] = useState(null)
+  const [loading, setLoading] = useState(false)
+  useEffect(() => {
+    if (locked) return // không fetch nếu đã khóa
+    if (ODDS_CACHE[matchId] && Date.now() - ODDS_CACHE[matchId].ts < CACHE_TTL) {
+      setOdds(ODDS_CACHE[matchId].data); return
+    }
+    setLoading(true)
+    fetchOddsForMatch(homeTeam, awayTeam).then(data => {
+      ODDS_CACHE[matchId] = { data, ts: Date.now() }
+      setOdds(data)
+      setLoading(false)
+    })
+  }, [matchId, homeTeam, awayTeam, locked])
+  return { odds, loading }
+}
+
+// ─── Hiển thị tỷ lệ cá cược ──────────────────────────────────
+function OddsBar({ odds, loading, homeTeam, awayTeam }) {
+  if (loading) return (
+    <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', padding: '4px 0' }}>
+      ⏳ Đang tải tỷ lệ...
+    </div>
+  )
+  if (!odds || (!odds.home && !odds.draw && !odds.away)) return null
+
+  const fmt = (v) => v ? v.toFixed(2) : '—'
+  // Tính % xác suất ngầm định
+  const toProb = (v) => v ? Math.round(100 / v) : null
+  const ph = toProb(odds.home), pd = toProb(odds.draw), pa = toProb(odds.away)
+
+  return (
+    <div style={{
+      margin: '8px 0 2px', padding: '7px 10px',
+      background: 'linear-gradient(135deg, #f0f4ff, #e8f0fe)',
+      borderRadius: 8, border: '1px solid #dce6ff',
+    }}>
+      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 5, display: 'flex', justifyContent: 'space-between' }}>
+        <span>📊 Tỷ lệ cá cược ({odds.bookmaker})</span>
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {[
+          { label: homeTeam, odds: odds.home, prob: ph, color: '#1a6fc4' },
+          { label: 'Hòa', odds: odds.draw, prob: pd, color: '#888' },
+          { label: awayTeam, odds: odds.away, prob: pa, color: '#e07000' },
+        ].map(({ label, odds: o, prob, color }) => (
+          <div key={label} style={{
+            flex: 1, textAlign: 'center', background: 'white',
+            borderRadius: 6, padding: '4px 2px', border: `1px solid ${color}22`,
+          }}>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
+            <div style={{ fontFamily: 'Oswald', fontSize: 15, fontWeight: 700, color }}>{fmt(o)}</div>
+            {prob && <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>~{prob}%</div>}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── Group Match Card ─────────────────────────────────────────
 function GroupMatchCard({ match, prediction, onPredict }) {
   const locked = isMatchLocked(match.match_time) || (match.result !== null && match.result !== undefined)
   const hasResult = match.result !== null && match.result !== undefined
+  const { odds, loading: oddsLoading } = useOdds(match.id, match.home_team, match.away_team, locked || hasResult)
 
   function getResultLabel(result) {
     if (result === 'home') return `${match.home_team} thắng`
@@ -49,6 +163,8 @@ function GroupMatchCard({ match, prediction, onPredict }) {
         <div className="team-name away">{match.away_team}</div>
       </div>
 
+      <OddsBar odds={odds} loading={oddsLoading} homeTeam={match.home_team} awayTeam={match.away_team} />
+
       <div className="predict-group">
         {['home', 'draw', 'away'].map(type => (
           <button
@@ -84,6 +200,7 @@ function KnockoutMatchCard({ match, prediction, onPredictKnockout }) {
   const [homeScore, setHomeScore] = useState(prediction?.predicted_home_score ?? '')
   const [awayScore, setAwayScore] = useState(prediction?.predicted_away_score ?? '')
   const [saving, setSaving] = useState(false)
+  const { odds, loading: oddsLoading } = useOdds(match.id, match.home_team, match.away_team, locked || hasResult)
 
   useEffect(() => {
     if (prediction) {
@@ -138,6 +255,8 @@ function KnockoutMatchCard({ match, prediction, onPredictKnockout }) {
         )}
         <div className="team-name away">{match.away_team}</div>
       </div>
+
+      <OddsBar odds={odds} loading={oddsLoading} homeTeam={match.home_team} awayTeam={match.away_team} />
 
       {!locked ? (
         <div className="knockout-predict">
