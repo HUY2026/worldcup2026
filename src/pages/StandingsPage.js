@@ -49,7 +49,8 @@ const BK = {
 const bkX  = (col) => col * BK.COL_W
 const bkCY = (round, i) => BK.pt[round] + i * (BK.ROW_H + BK.gap[round]) + BK.ROW_H / 2
 const SVG_W = BK.COL_W * 8 + BK.BOX_W
-const SVG_H = BK.pt.sf + BK.ROW_H + 20 + BK.HEADER_H
+// Chiều cao phải cover cột R32 (cao nhất): 8 slot × (ROW_H+gap) + HEADER_H + padding
+const SVG_H = BK.HEADER_H + BK.pt.r32 + 8*(BK.ROW_H+BK.gap.r32) - BK.gap.r32 + 20
 
 // MatchBox dùng foreignObject
 function BkMatchBox({ x, y, match }) {
