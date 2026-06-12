@@ -153,6 +153,107 @@ export default function AdminPage() {
     }
   }
 
+  async function handleAutoFetch() {
+  const ODDS_API_KEY = process.env.REACT_APP_ODDS_API_KEY
+  if (!ODDS_API_KEY) return toast('Chưa có API key!', 'error')
+
+  // Lấy danh sách trận đã diễn ra nhưng chưa có kết quả
+  const pending = matches.filter(m =>
+    m.result === null && new Date(m.match_time) < new Date()
+  )
+  if (pending.length === 0) return toast('Không có trận nào cần cập nhật!', 'info')
+
+  toast(`⏳ Đang fetch kết quả ${pending.length} trận...`, 'info')
+
+  try {
+    const res = await fetch(
+      `https://api.the-odds-api.com/v4/sports/soccer_fifa_world_cup/scores/?apiKey=${ODDS_API_KEY}&daysFrom=3`
+    )
+    if (!res.ok) throw new Error('API lỗi: ' + res.status)
+    const scores = await res.json()
+
+    // Hàm normalize tên đội để so sánh
+    function normName(s) {
+      return s.toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim()
+    }
+    const aliases = {
+      'usa': 'united states', 'us': 'united states',
+      'brasil': 'brazil', 'korea republic': 'south korea',
+      'republic of korea': 'south korea', 'czechia': 'czech republic',
+      'turkiye': 'turkey', 'türkiye': 'turkey',
+      'ivory coast': 'ivory coast', 'cote divoire': 'ivory coast',
+      'dr congo': 'dr congo', 'congo dr': 'dr congo',
+    }
+    const TEAM_MAP = {
+      'hàn quốc': 'south korea', 'nhật bản': 'japan', 'úc': 'australia',
+      'anh': 'england', 'pháp': 'france', 'đức': 'germany',
+      'tây ban nha': 'spain', 'bồ đào nha': 'portugal', 'hà lan': 'netherlands',
+      'bỉ': 'belgium', 'áo': 'austria', 'séc': 'czech republic',
+      'na uy': 'norway', 'thụy sĩ': 'switzerland', 'thụy điển': 'sweden',
+      'thổ nhĩ kỳ': 'turkey', 'bosnia và herzegovina': 'bosnia and herzegovina',
+      'mỹ': 'united states', 'brasil': 'brazil', 'bờ biển ngà': 'ivory coast',
+      'nam phi': 'south africa', 'maroc': 'morocco', 'ai cập': 'egypt',
+      'algeria': 'algeria', 'congo dr': 'dr congo', 'cape verde': 'cape verde',
+    }
+    function toEn(name) {
+      const k = normName(name)
+      return TEAM_MAP[k] || aliases[k] || k
+    }
+    function teamsMatch(apiName, localName) {
+      const a = aliases[normName(apiName)] || normName(apiName)
+      const b = toEn(localName)
+      return a === b || a.includes(b) || b.includes(a)
+    }
+
+    let updated = 0, notFound = 0
+    for (const match of pending) {
+      const score = scores.find(s =>
+        s.completed &&
+        ((teamsMatch(s.home_team, match.home_team) && teamsMatch(s.away_team, match.away_team)) ||
+         (teamsMatch(s.home_team, match.away_team) && teamsMatch(s.away_team, match.home_team)))
+      )
+      if (!score || !score.scores) { notFound++; continue }
+
+      const flipped = teamsMatch(score.home_team, match.away_team)
+      const homeScore = score.scores.find(s => s.name === (flipped ? score.away_team : score.home_team))
+      const awayScore = score.scores.find(s => s.name === (flipped ? score.home_team : score.away_team))
+      if (!homeScore || !awayScore) { notFound++; continue }
+
+      const h = parseInt(homeScore.score), a = parseInt(awayScore.score)
+      if (isNaN(h) || isNaN(a)) { notFound++; continue }
+
+      const result = h > a ? 'home' : h < a ? 'away' : 'draw'
+      const { error: matchErr } = await supabase.from('matches')
+        .update({ home_score: h, away_score: a, result })
+        .eq('id', match.id)
+      if (matchErr) continue
+
+      const { data: preds } = await supabase.from('predictions').select('*').eq('match_id', match.id)
+      const updatedMatch = { ...match, home_score: h, away_score: a, result }
+      for (const pred of (preds || [])) {
+        const pts = calculatePoints(pred, updatedMatch)
+        await supabase.from('predictions').update({ points: pts, is_scored: true }).eq('id', pred.id)
+      }
+      const playerIds = [...new Set((preds || []).map(p => p.player_id))]
+      for (const pid of playerIds) {
+        const { data: allPreds } = await supabase.from('predictions').select('points').eq('player_id', pid).eq('is_scored', true)
+        const total = (allPreds || []).reduce((s, p) => s + (p.points || 0), 0)
+        await supabase.from('players').update({ total_points: total }).eq('id', pid)
+      }
+      updated++
+    }
+
+    await loadMatches()
+    if (updated > 0) toast(`✅ Đã cập nhật ${updated} trận!${notFound > 0 ? ` (${notFound} trận chưa có dữ liệu)` : ''}`, 'success')
+    else toast(`Không tìm thấy kết quả nào. ${notFound} trận chưa có dữ liệu từ API.`, 'info')
+  } catch (err) {
+    console.error(err)
+    toast('Lỗi khi fetch kết quả: ' + err.message, 'error')
+  }
+}
+  
   if (loading) return (
     <div className="loading-center"><div className="spinner" style={{ width: 36, height: 36 }} /></div>
   )
