@@ -123,8 +123,7 @@ function teamsMatch(apiName, localName) {
   return false
 }
 
-// ─── Live Score (football-data.org) ──────────────────────────
-const FOOTBALL_DATA_API_KEY = process.env.REACT_APP_FOOTBALL_DATA_API_KEY || '0d77e55ca511412a93e5ea56e5204b0c'
+// ─── Live Score (football-data.org qua proxy /api/live-scores) ──
 const LIVE_SCORE_CACHE = { data: null, ts: 0 }
 const LIVE_SCORE_TTL = 60 * 1000 // 1 phút (free tier: 10 calls/phút)
 // Thời gian trận đấu kéo dài tối đa khi coi là "đang diễn ra" (90' + bù giờ + nghỉ giữa giờ)
@@ -139,39 +138,22 @@ function isMatchLive(matchTime, hasResult) {
   return now >= start && now < start + MATCH_DURATION_MS
 }
 
-// Lấy toàn bộ trận đang LIVE (IN_PLAY/PAUSED) từ football-data.org
+// Lấy toàn bộ trận đang LIVE (IN_PLAY/PAUSED) qua proxy /api/live-scores
+// (gọi trực tiếp football-data.org từ browser bị chặn CORS)
 async function fetchAllLiveScores() {
   if (LIVE_SCORE_CACHE.data && Date.now() - LIVE_SCORE_CACHE.ts < LIVE_SCORE_TTL) {
     return LIVE_SCORE_CACHE.data
   }
   try {
-    // Thử lấy trận đang LIVE trước
-    let res = await fetch(
-      `https://api.football-data.org/v4/competitions/WC/matches?status=LIVE`,
-      { headers: { 'X-Auth-Token': FOOTBALL_DATA_API_KEY } }
-    )
+    const res = await fetch('/api/live-scores')
     if (!res.ok) {
-      console.error('[LiveScore] football-data.org lỗi:', res.status, await res.text())
+      console.error('[LiveScore] /api/live-scores lỗi:', res.status, await res.text())
       return LIVE_SCORE_CACHE.data
     }
-    let data = await res.json()
-    let matches = data?.matches || []
+    const data = await res.json()
+    const matches = data?.matches || []
 
-    // Nếu không có trận LIVE nào (có thể do free tier filter status không khớp),
-    // fallback: lấy lịch hôm nay và lọc IN_PLAY/PAUSED ở client
-    if (matches.length === 0) {
-      const today = new Date().toISOString().slice(0, 10)
-      res = await fetch(
-        `https://api.football-data.org/v4/competitions/WC/matches?dateFrom=${today}&dateTo=${today}`,
-        { headers: { 'X-Auth-Token': FOOTBALL_DATA_API_KEY } }
-      )
-      if (res.ok) {
-        data = await res.json()
-        matches = (data?.matches || []).filter(m => m.status === 'IN_PLAY' || m.status === 'PAUSED')
-      }
-    }
-
-    console.log('[LiveScore] Số trận đang live từ football-data.org:', matches.length, matches.map(m => `${m.homeTeam?.name} ${m.score?.fullTime?.home}-${m.score?.fullTime?.away} ${m.awayTeam?.name} (${m.status}, ${m.minute}')`))
+    console.log('[LiveScore] Số trận đang live:', matches.length, matches.map(m => `${m.homeTeam?.name} ${m.score?.fullTime?.home}-${m.score?.fullTime?.away} ${m.awayTeam?.name} (${m.status}, ${m.minute}')`))
 
     LIVE_SCORE_CACHE.data = matches
     LIVE_SCORE_CACHE.ts = Date.now()
