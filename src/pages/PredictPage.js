@@ -4,133 +4,72 @@ import { useApp } from '../App'
 import { toast } from '../App'
 import { toVNTime, toVNTimeOnly, toVNDate, isMatchLocked, ROUND_LABELS, ROUND_ORDER } from '../lib/utils'
 
-const FD_API_KEY = process.env.REACT_APP_FD_API_KEY || '0d77e55ca511412a93e5ea56e5204b0c'
-
-const FD_TEAM_MAP = {
-  'Mexico': 'Mexico', 'South Africa': 'Nam Phi', 'Korea Republic': 'Hàn Quốc',
-  'Czechia': 'Séc', 'Canada': 'Canada', 'Bosnia and Herzegovina': 'Bosnia và Herzegovina',
-  'Qatar': 'Qatar', 'Switzerland': 'Thụy Sĩ', 'Brazil': 'Brasil', 'Morocco': 'Maroc',
-  'Haiti': 'Haiti', 'Scotland': 'Scotland', 'United States': 'Mỹ', 'Paraguay': 'Paraguay',
-  'Australia': 'Úc', 'Türkiye': 'Thổ Nhĩ Kỳ', 'Germany': 'Đức', 'Curaçao': 'Curaçao',
-  "Côte d'Ivoire": 'Bờ Biển Ngà', 'Ecuador': 'Ecuador', 'Netherlands': 'Hà Lan',
-  'Japan': 'Nhật Bản', 'Sweden': 'Thụy Điển', 'Tunisia': 'Tunisia',
-  'Spain': 'Tây Ban Nha', 'Cabo Verde': 'Cape Verde', 'Belgium': 'Bỉ', 'Egypt': 'Ai Cập',
-  'Saudi Arabia': 'Saudi Arabia', 'Uruguay': 'Uruguay', 'Iran': 'Iran',
-  'New Zealand': 'New Zealand', 'France': 'Pháp', 'Senegal': 'Senegal',
-  'Iraq': 'Iraq', 'Norway': 'Na Uy', 'Argentina': 'Argentina', 'Algeria': 'Algeria',
-  'Austria': 'Áo', 'Jordan': 'Jordan', 'Portugal': 'Bồ Đào Nha',
-  'DR Congo': 'DR Congo', 'Congo DR': 'DR Congo', 'England': 'Anh', 'Croatia': 'Croatia',
-  'Ghana': 'Ghana', 'Panama': 'Panama', 'Uzbekistan': 'Uzbekistan', 'Colombia': 'Colombia',
-  'South Korea': 'Hàn Quốc',
-}
-
-// Cache live scores toàn app, tránh mỗi card gọi API riêng
-let liveScoreCache = { data: null, ts: 0 }
-
-async function fetchLiveScores() {
-  if (Date.now() - liveScoreCache.ts < 55000) return liveScoreCache.data // cache 55s
-  try {
-    const res = await fetch(
-      'https://api.football-data.org/v4/competitions/WC/matches?status=IN_PLAY',
-      { headers: { 'X-Auth-Token': FD_API_KEY } }
-    )
-    if (!res.ok) return null
-    const json = await res.json()
-    liveScoreCache = { data: json.matches || [], ts: Date.now() }
-    return liveScoreCache.data
-  } catch { return null }
-}
-
-function findLiveScore(liveMatches, homeTeam, awayTeam) {
-  if (!liveMatches?.length) return null
-  const m = liveMatches.find(fm => {
-    const ah = FD_TEAM_MAP[fm.homeTeam.name] || fm.homeTeam.name
-    const aa = FD_TEAM_MAP[fm.awayTeam.name] || fm.awayTeam.name
-    return (ah === homeTeam && aa === awayTeam) || (ah === awayTeam && aa === homeTeam)
-  })
-  if (!m) return null
-  const flipped = (FD_TEAM_MAP[m.homeTeam.name] || m.homeTeam.name) === awayTeam
-  return {
-    home: flipped ? m.score.fullTime.away : m.score.fullTime.home,
-    away: flipped ? m.score.fullTime.home : m.score.fullTime.away,
-    minute: m.minute,
-  }
-}
-
-function useLiveScore(isLive, homeTeam, awayTeam) {
-  const [score, setScore] = useState(null)
-  const timerRef = useRef(null)
-
-  useEffect(() => {
-    if (!isLive) { setScore(null); return }
-
-    async function refresh() {
-      const liveMatches = await fetchLiveScores()
-      const s = findLiveScore(liveMatches, homeTeam, awayTeam)
-      if (s) setScore(s)
-    }
-
-    refresh()
-    timerRef.current = setInterval(refresh, 60000)
-    return () => clearInterval(timerRef.current)
-  }, [isLive, homeTeam, awayTeam])
-
-  return score
-}
+// ─── Odds API ─────────────────────────────────────────────────
 const ODDS_API_KEY = process.env.REACT_APP_ODDS_API_KEY || 'd8f7276c63549adc62d49712f9ad60fd'
 const ODDS_CACHE = {} // { matchId: { data, ts } }
 const CACHE_TTL = 30 * 60 * 1000 // 30 phút
 
-// Map tên đội VN/local → tên tiếng Anh chuẩn theo The Odds API
+// Map tên đội VN → tên tiếng Anh để match với API
 const TEAM_NAME_MAP = {
-  'Ai Cập': 'Egypt',
-  'Algeria': 'Algeria',
-  'Anh': 'England',
-  'Áo': 'Austria',
-  'Argentina': 'Argentina',
-  'Bỉ': 'Belgium',
-  'Bờ Biển Ngà': 'Ivory Coast',
-  'Bồ Đào Nha': 'Portugal',
-  'Bosnia và Herzegovina': 'Bosnia and Herzegovina',
-  'Brasil': 'Brazil',
-  'Canada': 'Canada',
-  'Cape Verde': 'Cape Verde',
-  'Colombia': 'Colombia',
-  'Croatia': 'Croatia',
-  'Curaçao': 'Curacao',
-  'DR Congo': 'DR Congo',
-  'Đức': 'Germany',
-  'Ecuador': 'Ecuador',
-  'Ghana': 'Ghana',
-  'Hà Lan': 'Netherlands',
-  'Haiti': 'Haiti',
+  // Châu Á
   'Hàn Quốc': 'South Korea',
+  'Nhật Bản': 'Japan',
+  'Úc': 'Australia',
   'Iran': 'Iran',
+  'Saudi Arabia': 'Saudi Arabia',
   'Iraq': 'Iraq',
   'Jordan': 'Jordan',
-  'Maroc': 'Morocco',
-  'Mexico': 'Mexico',
-  'Mỹ': 'United States',
-  'Na Uy': 'Norway',
-  'Nam Phi': 'South Africa',
-  'New Zealand': 'New Zealand',
-  'Nhật Bản': 'Japan',
-  'Panama': 'Panama',
-  'Paraguay': 'Paraguay',
-  'Pháp': 'France',
-  'Qatar': 'Qatar',
-  'Saudi Arabia': 'Saudi Arabia',
-  'Scotland': 'Scotland',
-  'Séc': 'Czech Republic',
-  'Senegal': 'Senegal',
-  'Tây Ban Nha': 'Spain',
-  'Thổ Nhĩ Kỳ': 'Turkey',
-  'Thụy Điển': 'Sweden',
-  'Thụy Sĩ': 'Switzerland',
-  'Tunisia': 'Tunisia',
-  'Úc': 'Australia',
-  'Uruguay': 'Uruguay',
   'Uzbekistan': 'Uzbekistan',
+  'Qatar': 'Qatar',
+
+  // Châu Âu
+  'Anh': 'England',
+  'Pháp': 'France',
+  'Đức': 'Germany',
+  'Tây Ban Nha': 'Spain',
+  'Bồ Đào Nha': 'Portugal',
+  'Hà Lan': 'Netherlands',
+  'Bỉ': 'Belgium',
+  'Áo': 'Austria',
+  'Séc': 'Czech Republic',
+  'Croatia': 'Croatia',
+  'Scotland': 'Scotland',
+  'Na Uy': 'Norway',
+  'Thụy Sĩ': 'Switzerland',
+  'Thụy Điển': 'Sweden',
+  'Thổ Nhĩ Kỳ': 'Turkey',
+  'Bosnia và Herzegovina': 'Bosnia and Herzegovina',
+
+  // Châu Mỹ
+  'Mỹ': 'United States',
+  'Mexico': 'Mexico',
+  'Canada': 'Canada',
+  'Brasil': 'Brazil',
+  'Argentina': 'Argentina',
+  'Colombia': 'Colombia',
+  'Uruguay': 'Uruguay',
+  'Ecuador': 'Ecuador',
+  'Paraguay': 'Paraguay',
+  'Chile': 'Chile',
+  'Panama': 'Panama',
+  'Haiti': 'Haiti',
+  'Curaçao': 'Curacao',
+  'Cape Verde': 'Cape Verde',
+
+  // Châu Phi
+  'Nam Phi': 'South Africa',
+  'Maroc': 'Morocco',
+  'Senegal': 'Senegal',
+  'Ghana': 'Ghana',
+  'Ai Cập': 'Egypt',
+  'Algeria': 'Algeria',
+  'Tunisia': 'Tunisia',
+  'Cameroon': 'Cameroon',
+  'Bờ Biển Ngà': 'Ivory Coast',
+  'DR Congo': 'DR Congo',
+
+  // Châu Đại Dương
+  'New Zealand': 'New Zealand',
 }
 
 function toEn(name) { return TEAM_NAME_MAP[name] || name }
@@ -138,20 +77,127 @@ function toEn(name) { return TEAM_NAME_MAP[name] || name }
 // Normalize chuỗi để so sánh: lowercase, bỏ dấu câu, bỏ khoảng trắng thừa
 function norm(s) {
   return s.toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9 ]/g, '')
     .replace(/\s+/g, ' ').trim()
 }
 
+// Alias thêm để match các tên API hay dùng khác với FIFA chuẩn
+const API_ALIASES = {
+  'usa': 'united states',
+  'united states': 'united states',
+  'us': 'united states',
+  'brasil': 'brazil',
+  'morocco': 'morocco',
+  'maroc': 'morocco',
+  'ivory coast': 'ivory coast',
+  'cote divoire': 'ivory coast',
+  "côte d'ivoire": 'ivory coast',
+  'curacao': 'curacao',
+  'curaçao': 'curacao',
+  'south korea': 'south korea',
+  'korea republic': 'south korea',
+  'republic of korea': 'south korea',
+  'dr congo': 'dr congo',
+  'congo dr': 'dr congo',
+  'democratic republic of congo': 'dr congo',
+  'bosnia and herzegovina': 'bosnia and herzegovina',
+  'bosnia & herzegovina': 'bosnia and herzegovina',
+  'czech republic': 'czech republic',
+  'czechia': 'czech republic',
+  'turkey': 'turkey',
+  'türkiye': 'turkey',
+}
+
+function resolveAlias(s) { return API_ALIASES[s] || s }
+
 // Kiểm tra 2 tên đội có match nhau không
 function teamsMatch(apiName, localName) {
-  const a = norm(apiName), b = norm(toEn(localName))
+  const a = resolveAlias(norm(apiName))
+  const b = resolveAlias(norm(toEn(localName)))
   if (a === b) return true
-  // Một bên chứa bên kia (xử lý "South Korea" vs "Korea Republic")
   if (a.includes(b) || b.includes(a)) return true
-  // Từ đầu tiên match (xử lý "Switzerland" vs "Swiss")
   const aw = a.split(' '), bw = b.split(' ')
   if (aw[0] === bw[0] && aw[0].length > 3) return true
   return false
+}
+
+// ─── Live Score (football-data.org) ──────────────────────────
+const FOOTBALL_DATA_API_KEY = process.env.REACT_APP_FOOTBALL_DATA_API_KEY || '0d77e55ca511412a93e5ea56e5204b0c'
+const LIVE_SCORE_CACHE = { data: null, ts: 0 }
+const LIVE_SCORE_TTL = 60 * 1000 // 1 phút (free tier: 10 calls/phút)
+// Thời gian trận đấu kéo dài tối đa khi coi là "đang diễn ra" (90' + bù giờ + nghỉ giữa giờ)
+const MATCH_DURATION_MS = 2.5 * 60 * 60 * 1000 // 2.5 giờ
+
+// Trận được coi là "đang diễn ra" nếu đã bắt đầu nhưng chưa quá MATCH_DURATION_MS
+// và chưa có kết quả chính thức từ admin
+function isMatchLive(matchTime, hasResult) {
+  if (hasResult) return false
+  const start = new Date(matchTime).getTime()
+  const now = Date.now()
+  return now >= start && now < start + MATCH_DURATION_MS
+}
+
+// Lấy toàn bộ trận đang LIVE (IN_PLAY/PAUSED) từ football-data.org
+async function fetchAllLiveScores() {
+  if (LIVE_SCORE_CACHE.data && Date.now() - LIVE_SCORE_CACHE.ts < LIVE_SCORE_TTL) {
+    return LIVE_SCORE_CACHE.data
+  }
+  try {
+    const res = await fetch(
+      `https://api.football-data.org/v4/competitions/WC/matches?status=LIVE`,
+      { headers: { 'X-Auth-Token': FOOTBALL_DATA_API_KEY } }
+    )
+    if (!res.ok) return LIVE_SCORE_CACHE.data
+    const data = await res.json()
+    const matches = data?.matches || []
+    LIVE_SCORE_CACHE.data = matches
+    LIVE_SCORE_CACHE.ts = Date.now()
+    return matches
+  } catch {
+    return LIVE_SCORE_CACHE.data
+  }
+}
+
+function findLiveScore(matches, homeTeam, awayTeam) {
+  if (!matches) return null
+  const game = matches.find(m => {
+    const h = m.homeTeam?.name || ''
+    const a = m.awayTeam?.name || ''
+    return (teamsMatch(h, homeTeam) && teamsMatch(a, awayTeam)) ||
+           (teamsMatch(h, awayTeam) && teamsMatch(a, homeTeam))
+  })
+  if (!game) return null
+  const flipped = teamsMatch(game.homeTeam?.name || '', awayTeam)
+  const ft = game.score?.fullTime || {}
+  const home = flipped ? ft.away : ft.home
+  const away = flipped ? ft.home : ft.away
+  if (home === null || home === undefined || away === null || away === undefined) return null
+  return {
+    home: parseInt(home),
+    away: parseInt(away),
+    minute: game.minute ?? null,
+    status: game.status,
+  }
+}
+
+// Hook lấy tỷ số live cho 1 trận, refresh mỗi 60s
+function useLiveScore(homeTeam, awayTeam, isLive) {
+  const [score, setScore] = useState(null)
+  useEffect(() => {
+    if (!isLive) { setScore(null); return }
+    let active = true
+    async function load() {
+      const matches = await fetchAllLiveScores()
+      if (!active) return
+      setScore(findLiveScore(matches, homeTeam, awayTeam))
+    }
+    load()
+    const interval = setInterval(load, LIVE_SCORE_TTL)
+    return () => { active = false; clearInterval(interval) }
+  }, [homeTeam, awayTeam, isLive])
+  return score
 }
 
 async function fetchOddsForMatch(homeTeam, awayTeam) {
@@ -247,9 +293,8 @@ function OddsBar({ odds, loading, homeTeam, awayTeam }) {
 function GroupMatchCard({ match, prediction, onPredict }) {
   const locked = isMatchLocked(match.match_time) || (match.result !== null && match.result !== undefined)
   const hasResult = match.result !== null && match.result !== undefined
-  const minsElapsed = (new Date() - new Date(match.match_time)) / 60000
-  const isLive = !hasResult && minsElapsed >= 0 && minsElapsed <= 130
-  const liveScore = useLiveScore(isLive, match.home_team, match.away_team)
+  const live = isMatchLive(match.match_time, hasResult)
+  const liveScore = useLiveScore(match.home_team, match.away_team, live)
   const { odds, loading: oddsLoading } = useOdds(match.id, match.home_team, match.away_team, locked || hasResult)
 
   function getResultLabel(result) {
@@ -270,11 +315,11 @@ function GroupMatchCard({ match, prediction, onPredict }) {
   }
 
   return (
-    <div className={`match-card ${locked ? 'locked' : ''} ${hasResult ? 'has-result' : ''}`}>
+    <div className={`match-card ${locked ? 'locked' : ''} ${hasResult ? 'has-result' : ''} ${live ? 'is-live' : ''}`}>
       <div className="match-meta">
         <span className="match-time-badge">🕐 {toVNTime(match.match_time)}</span>
-        <span className={`match-status-badge ${hasResult ? 'done' : isLive ? 'live' : locked ? 'locked' : 'upcoming'}`}>
-          {hasResult ? '✅ Có kết quả' : isLive ? '🔴 Đang diễn ra' : locked ? '🔒 Đã khóa' : '⏰ Sắp diễn ra'}
+        <span className={`match-status-badge ${hasResult ? 'done' : live ? 'live' : locked ? 'locked' : 'upcoming'}`}>
+          {hasResult ? '✅ Có kết quả' : live ? `🔴 Đang diễn ra${liveScore?.minute ? ` (${liveScore.minute}')` : ''}` : locked ? '🔒 Đã khóa' : '⏰ Sắp diễn ra'}
         </span>
       </div>
 
@@ -286,14 +331,11 @@ function GroupMatchCard({ match, prediction, onPredict }) {
             <span className="score-sep">-</span>
             <span className="score-num">{match.away_score}</span>
           </div>
-        ) : isLive && liveScore ? (
-          <div className="match-score" style={{ color: '#dc2626' }}>
-            <span className="score-num">{liveScore.home ?? '?'}</span>
-            <span className="score-sep" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-              {liveScore.minute && <span style={{ fontSize: 9, color: '#dc2626', fontWeight: 700 }}>{liveScore.minute}'</span>}
-              <span>-</span>
-            </span>
-            <span className="score-num">{liveScore.away ?? '?'}</span>
+        ) : live && liveScore ? (
+          <div className="match-score live-score">
+            <span className="score-num">{liveScore.home}</span>
+            <span className="score-sep">-</span>
+            <span className="score-num">{liveScore.away}</span>
           </div>
         ) : (
           <div className="match-vs">VS</div>
@@ -334,9 +376,8 @@ function GroupMatchCard({ match, prediction, onPredict }) {
 function KnockoutMatchCard({ match, prediction, onPredictKnockout }) {
   const locked = isMatchLocked(match.match_time) || (match.result !== null && match.result !== undefined)
   const hasResult = match.result !== null && match.result !== undefined
-  const minsElapsed = (new Date() - new Date(match.match_time)) / 60000
-  const isLive = !hasResult && minsElapsed >= 0 && minsElapsed <= 130
-  const liveScore = useLiveScore(isLive, match.home_team, match.away_team)
+  const live = isMatchLive(match.match_time, hasResult)
+  const liveScore = useLiveScore(match.home_team, match.away_team, live)
   const [winner, setWinner] = useState(prediction?.predicted_winner || '')
   const [homeScore, setHomeScore] = useState(prediction?.predicted_home_score ?? '')
   const [awayScore, setAwayScore] = useState(prediction?.predicted_away_score ?? '')
@@ -375,11 +416,11 @@ function KnockoutMatchCard({ match, prediction, onPredictKnockout }) {
   ) : null
 
   return (
-    <div className={`match-card ${locked ? 'locked' : ''} ${hasResult ? 'has-result' : ''}`}>
+    <div className={`match-card ${locked ? 'locked' : ''} ${hasResult ? 'has-result' : ''} ${live ? 'is-live' : ''}`}>
       <div className="match-meta">
         <span className="match-time-badge">🕐 {toVNTime(match.match_time)}</span>
-        <span className={`match-status-badge ${hasResult ? 'done' : isLive ? 'live' : locked ? 'locked' : 'upcoming'}`}>
-          {hasResult ? '✅ Có kết quả' : isLive ? '🔴 Đang diễn ra' : locked ? '🔒 Đã khóa' : '⏰ Sắp diễn ra'}
+        <span className={`match-status-badge ${hasResult ? 'done' : live ? 'live' : locked ? 'locked' : 'upcoming'}`}>
+          {hasResult ? '✅ Có kết quả' : live ? `🔴 Đang diễn ra${liveScore?.minute ? ` (${liveScore.minute}')` : ''}` : locked ? '🔒 Đã khóa' : '⏰ Sắp diễn ra'}
         </span>
       </div>
 
@@ -391,14 +432,11 @@ function KnockoutMatchCard({ match, prediction, onPredictKnockout }) {
             <span className="score-sep">-</span>
             <span className="score-num">{match.away_score}</span>
           </div>
-        ) : isLive && liveScore ? (
-          <div className="match-score" style={{ color: '#dc2626' }}>
-            <span className="score-num">{liveScore.home ?? '?'}</span>
-            <span className="score-sep" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-              {liveScore.minute && <span style={{ fontSize: 9, color: '#dc2626', fontWeight: 700 }}>{liveScore.minute}'</span>}
-              <span>-</span>
-            </span>
-            <span className="score-num">{liveScore.away ?? '?'}</span>
+        ) : live && liveScore ? (
+          <div className="match-score live-score">
+            <span className="score-num">{liveScore.home}</span>
+            <span className="score-sep">-</span>
+            <span className="score-num">{liveScore.away}</span>
           </div>
         ) : (
           <div className="match-vs">VS</div>
