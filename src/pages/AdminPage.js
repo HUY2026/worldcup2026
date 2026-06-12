@@ -153,215 +153,125 @@ export default function AdminPage() {
     }
   }
 
-  async function handleAutoFetch() {
-  const ODDS_API_KEY = process.env.REACT_APP_ODDS_API_KEY
-  if (!ODDS_API_KEY) return toast('Chưa có API key!', 'error')
+  // ─── football-data.org API ────────────────────────────────────
+  const FD_API_KEY = process.env.REACT_APP_FD_API_KEY || '0d77e55ca511412a93e5ea56e5204b0c'
+  const [liveStatus, setLiveStatus] = React.useState(null)
+  const [lastSync, setLastSync] = React.useState(null)
+  const autoFetchRef = React.useRef(null)
 
-  // Lấy danh sách trận đã diễn ra nhưng chưa có kết quả
-  const pending = matches.filter(m =>
-    m.result === null && new Date(m.match_time) < new Date()
-  )
-  if (pending.length === 0) return toast('Không có trận nào cần cập nhật!', 'info')
+  const FD_TEAM_MAP = {
+    'Mexico': 'Mexico', 'South Africa': 'Nam Phi', 'Korea Republic': 'Hàn Quốc',
+    'Czechia': 'Séc', 'Canada': 'Canada', 'Bosnia and Herzegovina': 'Bosnia và Herzegovina',
+    'Qatar': 'Qatar', 'Switzerland': 'Thụy Sĩ', 'Brazil': 'Brasil', 'Morocco': 'Maroc',
+    'Haiti': 'Haiti', 'Scotland': 'Scotland', 'United States': 'Mỹ', 'Paraguay': 'Paraguay',
+    'Australia': 'Úc', 'Türkiye': 'Thổ Nhĩ Kỳ', 'Germany': 'Đức', 'Curaçao': 'Curaçao',
+    "Côte d'Ivoire": 'Bờ Biển Ngà', 'Ecuador': 'Ecuador', 'Netherlands': 'Hà Lan',
+    'Japan': 'Nhật Bản', 'Sweden': 'Thụy Điển', 'Tunisia': 'Tunisia',
+    'Spain': 'Tây Ban Nha', 'Cabo Verde': 'Cape Verde', 'Belgium': 'Bỉ', 'Egypt': 'Ai Cập',
+    'Saudi Arabia': 'Saudi Arabia', 'Uruguay': 'Uruguay', 'Iran': 'Iran',
+    'New Zealand': 'New Zealand', 'France': 'Pháp', 'Senegal': 'Senegal',
+    'Iraq': 'Iraq', 'Norway': 'Na Uy', 'Argentina': 'Argentina', 'Algeria': 'Algeria',
+    'Austria': 'Áo', 'Jordan': 'Jordan', 'Portugal': 'Bồ Đào Nha',
+    'DR Congo': 'DR Congo', 'Congo DR': 'DR Congo', 'England': 'Anh', 'Croatia': 'Croatia',
+    'Ghana': 'Ghana', 'Panama': 'Panama', 'Uzbekistan': 'Uzbekistan', 'Colombia': 'Colombia',
+    'South Korea': 'Hàn Quốc',
+  }
 
-  toast(`⏳ Đang fetch kết quả ${pending.length} trận...`, 'info')
+  // Trận đang live (0–120 phút kể từ kickoff, chưa có kết quả)
+  function getLiveOrJustFinished(matchList) {
+    const now = new Date()
+    return matchList.filter(m => {
+      if (m.result !== null) return false
+      const mins = (now - new Date(m.match_time)) / 60000
+      return mins >= 0 && mins <= 130
+    })
+  }
 
-  try {
-    const res = await fetch(
-      `https://api.the-odds-api.com/v4/sports/soccer_fifa_world_cup/scores/?apiKey=${ODDS_API_KEY}&daysFrom=3`
-    )
-    if (!res.ok) throw new Error('API lỗi: ' + res.status)
-    const scores = await res.json()
-
-    // Hàm normalize tên đội để so sánh
-    function normName(s) {
-      return s.toLowerCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim()
-    }
-    const aliases = {
-      'usa': 'united states', 'us': 'united states',
-      'brasil': 'brazil', 'korea republic': 'south korea',
-      'republic of korea': 'south korea', 'czechia': 'czech republic',
-      'turkiye': 'turkey', 'türkiye': 'turkey',
-      'ivory coast': 'ivory coast', 'cote divoire': 'ivory coast',
-      'dr congo': 'dr congo', 'congo dr': 'dr congo',
-    }
-    const TEAM_MAP = {
-      'hàn quốc': 'south korea', 'nhật bản': 'japan', 'úc': 'australia',
-      'anh': 'england', 'pháp': 'france', 'đức': 'germany',
-      'tây ban nha': 'spain', 'bồ đào nha': 'portugal', 'hà lan': 'netherlands',
-      'bỉ': 'belgium', 'áo': 'austria', 'séc': 'czech republic',
-      'na uy': 'norway', 'thụy sĩ': 'switzerland', 'thụy điển': 'sweden',
-      'thổ nhĩ kỳ': 'turkey', 'bosnia và herzegovina': 'bosnia and herzegovina',
-      'mỹ': 'united states', 'brasil': 'brazil', 'bờ biển ngà': 'ivory coast',
-      'nam phi': 'south africa', 'maroc': 'morocco', 'ai cập': 'egypt',
-      'algeria': 'algeria', 'congo dr': 'dr congo', 'cape verde': 'cape verde',
-    }
-    function toEn(name) {
-      const k = normName(name)
-      return TEAM_MAP[k] || aliases[k] || k
-    }
-    function teamsMatch(apiName, localName) {
-      const a = aliases[normName(apiName)] || normName(apiName)
-      const b = toEn(localName)
-      return a === b || a.includes(b) || b.includes(a)
-    }
-
-    let updated = 0, notFound = 0
-    for (const match of pending) {
-      const score = scores.find(s =>
-        s.completed &&
-        ((teamsMatch(s.home_team, match.home_team) && teamsMatch(s.away_team, match.away_team)) ||
-         (teamsMatch(s.home_team, match.away_team) && teamsMatch(s.away_team, match.home_team)))
+  async function fetchAndSyncResults(matchList, silent = false) {
+    const pending = matchList.filter(m => m.result === null && new Date(m.match_time) < new Date())
+    if (pending.length === 0) { if (!silent) toast('Không có trận nào cần cập nhật!', 'info'); return 0 }
+    if (!silent) toast(`⏳ Đang fetch kết quả ${pending.length} trận...`, 'info')
+    setLiveStatus('fetching')
+    try {
+      const res = await fetch(
+        'https://api.football-data.org/v4/competitions/WC/matches?status=FINISHED',
+        { headers: { 'X-Auth-Token': FD_API_KEY } }
       )
-      if (!score || !score.scores) { notFound++; continue }
+      if (!res.ok) throw new Error('API lỗi: ' + res.status)
+      const fdMatches = (await res.json()).matches || []
 
-      const flipped = teamsMatch(score.home_team, match.away_team)
-      const homeScore = score.scores.find(s => s.name === (flipped ? score.away_team : score.home_team))
-      const awayScore = score.scores.find(s => s.name === (flipped ? score.home_team : score.away_team))
-      if (!homeScore || !awayScore) { notFound++; continue }
+      let updated = 0, notFound = 0
+      for (const match of pending) {
+        const fdMatch = fdMatches.find(fm => {
+          const ah = FD_TEAM_MAP[fm.homeTeam.name] || fm.homeTeam.name
+          const aa = FD_TEAM_MAP[fm.awayTeam.name] || fm.awayTeam.name
+          return (ah === match.home_team && aa === match.away_team) ||
+                 (ah === match.away_team && aa === match.home_team)
+        })
+        if (!fdMatch || fdMatch.status !== 'FINISHED') { notFound++; continue }
 
-      const h = parseInt(homeScore.score), a = parseInt(awayScore.score)
-      if (isNaN(h) || isNaN(a)) { notFound++; continue }
+        const flipped = (FD_TEAM_MAP[fdMatch.homeTeam.name] || fdMatch.homeTeam.name) === match.away_team
+        const h = flipped ? fdMatch.score.fullTime.away : fdMatch.score.fullTime.home
+        const a = flipped ? fdMatch.score.fullTime.home : fdMatch.score.fullTime.away
+        if (h === null || a === null) { notFound++; continue }
 
-      const result = h > a ? 'home' : h < a ? 'away' : 'draw'
-      const { error: matchErr } = await supabase.from('matches')
-        .update({ home_score: h, away_score: a, result })
-        .eq('id', match.id)
-      if (matchErr) continue
+        const result = h > a ? 'home' : h < a ? 'away' : 'draw'
+        let penaltyHome = null, penaltyAway = null
+        if (fdMatch.score.penalties?.home != null) {
+          penaltyHome = flipped ? fdMatch.score.penalties.away : fdMatch.score.penalties.home
+          penaltyAway = flipped ? fdMatch.score.penalties.home : fdMatch.score.penalties.away
+        }
+        const updateData = { home_score: h, away_score: a, result }
+        if (penaltyHome !== null) { updateData.penalty_home = penaltyHome; updateData.penalty_away = penaltyAway }
 
-      const { data: preds } = await supabase.from('predictions').select('*').eq('match_id', match.id)
-      const updatedMatch = { ...match, home_score: h, away_score: a, result }
-      for (const pred of (preds || [])) {
-        const pts = calculatePoints(pred, updatedMatch)
-        await supabase.from('predictions').update({ points: pts, is_scored: true }).eq('id', pred.id)
+        const { error: matchErr } = await supabase.from('matches').update(updateData).eq('id', match.id)
+        if (matchErr) { notFound++; continue }
+
+        const { data: preds } = await supabase.from('predictions').select('*').eq('match_id', match.id)
+        const updatedMatch = { ...match, ...updateData }
+        for (const pred of (preds || [])) {
+          const pts = calculatePoints(pred, updatedMatch)
+          await supabase.from('predictions').update({ points: pts, is_scored: true }).eq('id', pred.id)
+        }
+        const playerIds = [...new Set((preds || []).map(p => p.player_id))]
+        for (const pid of playerIds) {
+          const { data: allPreds } = await supabase.from('predictions').select('points').eq('player_id', pid).eq('is_scored', true)
+          const total = (allPreds || []).reduce((s, p) => s + (p.points || 0), 0)
+          await supabase.from('players').update({ total_points: total }).eq('id', pid)
+        }
+        updated++
       }
-      const playerIds = [...new Set((preds || []).map(p => p.player_id))]
-      for (const pid of playerIds) {
-        const { data: allPreds } = await supabase.from('predictions').select('points').eq('player_id', pid).eq('is_scored', true)
-        const total = (allPreds || []).reduce((s, p) => s + (p.points || 0), 0)
-        await supabase.from('players').update({ total_points: total }).eq('id', pid)
+
+      setLastSync(new Date())
+      if (updated > 0) {
+        await loadMatches()
+        if (!silent) toast(`✅ Cập nhật ${updated} trận!`, 'success')
+        else toast(`🔄 Auto-sync: cập nhật ${updated} trận mới`, 'success')
+      } else if (!silent) {
+        toast(`Chưa có kết quả mới. ${notFound} trận chưa hoàn thành.`, 'info')
       }
-      updated++
+      return updated
+    } catch (err) {
+      if (!silent) toast('Lỗi: ' + err.message, 'error')
+      return 0
+    } finally {
+      setLiveStatus('idle')
     }
-
-    await loadMatches()
-    if (updated > 0) toast(`✅ Đã cập nhật ${updated} trận!${notFound > 0 ? ` (${notFound} trận chưa có dữ liệu)` : ''}`, 'success')
-    else toast(`Không tìm thấy kết quả nào. ${notFound} trận chưa có dữ liệu từ API.`, 'info')
-  } catch (err) {
-    console.error(err)
-    toast('Lỗi khi fetch kết quả: ' + err.message, 'error')
   }
-}
 
-  // ─── Auto fetch từ football-data.org ─────────────────────────
-const FD_API_KEY = process.env.REACT_APP_FD_API_KEY
+  async function handleAutoFetch() { await fetchAndSyncResults(matches, false) }
 
-// Map tên đội API (tiếng Anh) → tên trong DB (tiếng Việt)
-const FD_TEAM_MAP = {
-  'Mexico': 'Mexico', 'South Africa': 'Nam Phi', 'Korea Republic': 'Hàn Quốc',
-  'Czechia': 'Séc', 'Canada': 'Canada', 'Bosnia and Herzegovina': 'Bosnia và Herzegovina',
-  'Qatar': 'Qatar', 'Switzerland': 'Thụy Sĩ', 'Brazil': 'Brasil', 'Morocco': 'Maroc',
-  'Haiti': 'Haiti', 'Scotland': 'Scotland', 'United States': 'Mỹ', 'Paraguay': 'Paraguay',
-  'Australia': 'Úc', 'Türkiye': 'Thổ Nhĩ Kỳ', 'Germany': 'Đức', 'Curaçao': 'Curaçao',
-  'Côte d\'Ivoire': 'Bờ Biển Ngà', 'Ecuador': 'Ecuador', 'Netherlands': 'Hà Lan',
-  'Japan': 'Nhật Bản', 'Sweden': 'Thụy Điển', 'Tunisia': 'Tunisia',
-  'Spain': 'Tây Ban Nha', 'Cabo Verde': 'Cape Verde', 'Belgium': 'Bỉ', 'Egypt': 'Ai Cập',
-  'Saudi Arabia': 'Saudi Arabia', 'Uruguay': 'Uruguay', 'Iran': 'Iran',
-  'New Zealand': 'New Zealand', 'France': 'Pháp', 'Senegal': 'Senegal',
-  'Iraq': 'Iraq', 'Norway': 'Na Uy', 'Argentina': 'Argentina', 'Algeria': 'Algeria',
-  'Austria': 'Áo', 'Jordan': 'Jordan', 'Portugal': 'Bồ Đào Nha',
-  'Congo DR': 'Congo DR', 'DR Congo': 'Congo DR', 'England': 'Anh', 'Croatia': 'Croatia',
-  'Ghana': 'Ghana', 'Panama': 'Panama', 'Uzbekistan': 'Uzbekistan', 'Colombia': 'Colombia',
-  'South Korea': 'Hàn Quốc',
-}
+  // Auto-fetch mỗi 1 phút khi có trận đang live
+  React.useEffect(() => {
+    clearInterval(autoFetchRef.current)
+    autoFetchRef.current = setInterval(() => {
+      const live = getLiveOrJustFinished(matches)
+      if (live.length > 0) fetchAndSyncResults(matches, true)
+    }, 60000)
+    return () => clearInterval(autoFetchRef.current)
+  }, [matches])
 
-async function handleAutoFetch() {
-  if (!FD_API_KEY) return toast('Chưa có REACT_APP_FD_API_KEY!', 'error')
-
-  const pending = matches.filter(m =>
-    m.result === null && new Date(m.match_time) < new Date()
-  )
-  if (pending.length === 0) return toast('Không có trận nào cần cập nhật!', 'info')
-
-  toast(`⏳ Đang fetch kết quả ${pending.length} trận...`, 'info')
-
-  try {
-    const res = await fetch(
-      'https://api.football-data.org/v4/competitions/WC/matches?status=FINISHED',
-      { headers: { 'X-Auth-Token': FD_API_KEY } }
-    )
-    if (!res.ok) throw new Error('API lỗi: ' + res.status)
-    const json = await res.json()
-    const fdMatches = json.matches || []
-
-    let updated = 0, notFound = 0
-
-    for (const match of pending) {
-      // Tìm trận tương ứng trong API
-      const fdMatch = fdMatches.find(fm => {
-        const apiHome = FD_TEAM_MAP[fm.homeTeam.name] || fm.homeTeam.name
-        const apiAway = FD_TEAM_MAP[fm.awayTeam.name] || fm.awayTeam.name
-        return (apiHome === match.home_team && apiAway === match.away_team) ||
-               (apiHome === match.away_team && apiAway === match.home_team)
-      })
-
-      if (!fdMatch || fdMatch.status !== 'FINISHED') { notFound++; continue }
-
-      const flipped = FD_TEAM_MAP[fdMatch.homeTeam.name] === match.away_team
-      const h = flipped ? fdMatch.score.fullTime.away : fdMatch.score.fullTime.home
-      const a = flipped ? fdMatch.score.fullTime.home : fdMatch.score.fullTime.away
-      if (h === null || a === null) { notFound++; continue }
-
-      const result = h > a ? 'home' : h < a ? 'away' : 'draw'
-
-      // Penalty (vòng loại trực tiếp)
-      let penaltyHome = null, penaltyAway = null
-      if (fdMatch.score.penalties?.home !== null) {
-        penaltyHome = flipped ? fdMatch.score.penalties.away : fdMatch.score.penalties.home
-        penaltyAway = flipped ? fdMatch.score.penalties.home : fdMatch.score.penalties.away
-      }
-
-      const updateData = { home_score: h, away_score: a, result }
-      if (penaltyHome !== null) {
-        updateData.penalty_home = penaltyHome
-        updateData.penalty_away = penaltyAway
-      }
-
-      const { error: matchErr } = await supabase.from('matches').update(updateData).eq('id', match.id)
-      if (matchErr) { notFound++; continue }
-
-      const { data: preds } = await supabase.from('predictions').select('*').eq('match_id', match.id)
-      const updatedMatch = { ...match, ...updateData }
-      for (const pred of (preds || [])) {
-        const pts = calculatePoints(pred, updatedMatch)
-        await supabase.from('predictions').update({ points: pts, is_scored: true }).eq('id', pred.id)
-      }
-
-      const playerIds = [...new Set((preds || []).map(p => p.player_id))]
-      for (const pid of playerIds) {
-        const { data: allPreds } = await supabase.from('predictions')
-          .select('points').eq('player_id', pid).eq('is_scored', true)
-        const total = (allPreds || []).reduce((s, p) => s + (p.points || 0), 0)
-        await supabase.from('players').update({ total_points: total }).eq('id', pid)
-      }
-
-      updated++
-    }
-
-    await loadMatches()
-    if (updated > 0)
-      toast(`✅ Cập nhật ${updated} trận!${notFound > 0 ? ` (${notFound} trận chưa có dữ liệu)` : ''}`, 'success')
-    else
-      toast(`Chưa có kết quả mới. ${notFound} trận chưa hoàn thành.`, 'info')
-
-  } catch (err) {
-    console.error(err)
-    toast('Lỗi: ' + err.message, 'error')
-  }
-}
-  
-  if (loading) return (
+  if (loading)  if (loading) return (
     <div className="loading-center"><div className="spinner" style={{ width: 36, height: 36 }} /></div>
   )
 
@@ -407,13 +317,28 @@ async function handleAutoFetch() {
       </div>
 
       {/* Add knockout match button */}
-      <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <button className="btn btn-accent btn-sm" onClick={() => setShowAddModal(true)}>
           ➕ Thêm trận vòng loại trực tiếp
         </button>
-        <button className="btn btn-sm" style={{ background: '#0ea5e9', color: 'white' }} onClick={handleAutoFetch}>
-          🔄 Tự động lấy kết quả
+        <button className="btn btn-sm" style={{ background: '#0ea5e9', color: 'white', display: 'flex', alignItems: 'center', gap: 6 }}
+          onClick={handleAutoFetch} disabled={liveStatus === 'fetching'}>
+          {liveStatus === 'fetching'
+            ? <><span className="spinner" style={{ width: 13, height: 13 }} /> Đang sync...</>
+            : '🔄 Sync kết quả'}
         </button>
+        {/* Live indicator */}
+        {getLiveOrJustFinished(matches).length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#16a34a', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
+            {getLiveOrJustFinished(matches).length} trận đang live — auto-sync mỗi 1 phút
+          </div>
+        )}
+        {lastSync && liveStatus !== 'fetching' && (
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            Sync lần cuối: {lastSync.toLocaleTimeString('vi-VN')}
+          </span>
+        )}
       </div>
 
       {/* Add Match Modal */}
