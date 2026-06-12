@@ -304,6 +304,9 @@ export default function AdminPage() {
         <button className="btn btn-accent btn-sm" onClick={() => setShowAddModal(true)}>
           ➕ Thêm trận vòng loại trực tiếp
         </button>
+        <button className="btn btn-sm" style={{ background: '#0ea5e9', color: 'white' }} onClick={handleAutoFetch}>
+          🔄 Tự động lấy kết quả
+        </button>
       </div>
 
       {/* Add Match Modal */}
