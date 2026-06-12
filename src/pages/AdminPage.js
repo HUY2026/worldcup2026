@@ -194,8 +194,7 @@ export default function AdminPage() {
     setLiveStatus('fetching')
     try {
       const res = await fetch(
-        'https://api.football-data.org/v4/competitions/WC/matches?status=FINISHED',
-        { headers: { 'X-Auth-Token': FD_API_KEY } }
+        '/api/football-data?status=FINISHED',
       )
       if (!res.ok) throw new Error('API lỗi: ' + res.status)
       const fdMatches = (await res.json()).matches || []
