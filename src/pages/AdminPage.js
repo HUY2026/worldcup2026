@@ -253,6 +253,113 @@ export default function AdminPage() {
     toast('Lỗi khi fetch kết quả: ' + err.message, 'error')
   }
 }
+
+  // ─── Auto fetch từ football-data.org ─────────────────────────
+const FD_API_KEY = process.env.REACT_APP_FD_API_KEY
+
+// Map tên đội API (tiếng Anh) → tên trong DB (tiếng Việt)
+const FD_TEAM_MAP = {
+  'Mexico': 'Mexico', 'South Africa': 'Nam Phi', 'Korea Republic': 'Hàn Quốc',
+  'Czechia': 'Séc', 'Canada': 'Canada', 'Bosnia and Herzegovina': 'Bosnia và Herzegovina',
+  'Qatar': 'Qatar', 'Switzerland': 'Thụy Sĩ', 'Brazil': 'Brasil', 'Morocco': 'Maroc',
+  'Haiti': 'Haiti', 'Scotland': 'Scotland', 'United States': 'Mỹ', 'Paraguay': 'Paraguay',
+  'Australia': 'Úc', 'Türkiye': 'Thổ Nhĩ Kỳ', 'Germany': 'Đức', 'Curaçao': 'Curaçao',
+  'Côte d\'Ivoire': 'Bờ Biển Ngà', 'Ecuador': 'Ecuador', 'Netherlands': 'Hà Lan',
+  'Japan': 'Nhật Bản', 'Sweden': 'Thụy Điển', 'Tunisia': 'Tunisia',
+  'Spain': 'Tây Ban Nha', 'Cabo Verde': 'Cape Verde', 'Belgium': 'Bỉ', 'Egypt': 'Ai Cập',
+  'Saudi Arabia': 'Saudi Arabia', 'Uruguay': 'Uruguay', 'Iran': 'Iran',
+  'New Zealand': 'New Zealand', 'France': 'Pháp', 'Senegal': 'Senegal',
+  'Iraq': 'Iraq', 'Norway': 'Na Uy', 'Argentina': 'Argentina', 'Algeria': 'Algeria',
+  'Austria': 'Áo', 'Jordan': 'Jordan', 'Portugal': 'Bồ Đào Nha',
+  'Congo DR': 'Congo DR', 'DR Congo': 'Congo DR', 'England': 'Anh', 'Croatia': 'Croatia',
+  'Ghana': 'Ghana', 'Panama': 'Panama', 'Uzbekistan': 'Uzbekistan', 'Colombia': 'Colombia',
+  'South Korea': 'Hàn Quốc',
+}
+
+async function handleAutoFetch() {
+  if (!FD_API_KEY) return toast('Chưa có REACT_APP_FD_API_KEY!', 'error')
+
+  const pending = matches.filter(m =>
+    m.result === null && new Date(m.match_time) < new Date()
+  )
+  if (pending.length === 0) return toast('Không có trận nào cần cập nhật!', 'info')
+
+  toast(`⏳ Đang fetch kết quả ${pending.length} trận...`, 'info')
+
+  try {
+    const res = await fetch(
+      'https://api.football-data.org/v4/competitions/WC/matches?status=FINISHED',
+      { headers: { 'X-Auth-Token': FD_API_KEY } }
+    )
+    if (!res.ok) throw new Error('API lỗi: ' + res.status)
+    const json = await res.json()
+    const fdMatches = json.matches || []
+
+    let updated = 0, notFound = 0
+
+    for (const match of pending) {
+      // Tìm trận tương ứng trong API
+      const fdMatch = fdMatches.find(fm => {
+        const apiHome = FD_TEAM_MAP[fm.homeTeam.name] || fm.homeTeam.name
+        const apiAway = FD_TEAM_MAP[fm.awayTeam.name] || fm.awayTeam.name
+        return (apiHome === match.home_team && apiAway === match.away_team) ||
+               (apiHome === match.away_team && apiAway === match.home_team)
+      })
+
+      if (!fdMatch || fdMatch.status !== 'FINISHED') { notFound++; continue }
+
+      const flipped = FD_TEAM_MAP[fdMatch.homeTeam.name] === match.away_team
+      const h = flipped ? fdMatch.score.fullTime.away : fdMatch.score.fullTime.home
+      const a = flipped ? fdMatch.score.fullTime.home : fdMatch.score.fullTime.away
+      if (h === null || a === null) { notFound++; continue }
+
+      const result = h > a ? 'home' : h < a ? 'away' : 'draw'
+
+      // Penalty (vòng loại trực tiếp)
+      let penaltyHome = null, penaltyAway = null
+      if (fdMatch.score.penalties?.home !== null) {
+        penaltyHome = flipped ? fdMatch.score.penalties.away : fdMatch.score.penalties.home
+        penaltyAway = flipped ? fdMatch.score.penalties.home : fdMatch.score.penalties.away
+      }
+
+      const updateData = { home_score: h, away_score: a, result }
+      if (penaltyHome !== null) {
+        updateData.penalty_home = penaltyHome
+        updateData.penalty_away = penaltyAway
+      }
+
+      const { error: matchErr } = await supabase.from('matches').update(updateData).eq('id', match.id)
+      if (matchErr) { notFound++; continue }
+
+      const { data: preds } = await supabase.from('predictions').select('*').eq('match_id', match.id)
+      const updatedMatch = { ...match, ...updateData }
+      for (const pred of (preds || [])) {
+        const pts = calculatePoints(pred, updatedMatch)
+        await supabase.from('predictions').update({ points: pts, is_scored: true }).eq('id', pred.id)
+      }
+
+      const playerIds = [...new Set((preds || []).map(p => p.player_id))]
+      for (const pid of playerIds) {
+        const { data: allPreds } = await supabase.from('predictions')
+          .select('points').eq('player_id', pid).eq('is_scored', true)
+        const total = (allPreds || []).reduce((s, p) => s + (p.points || 0), 0)
+        await supabase.from('players').update({ total_points: total }).eq('id', pid)
+      }
+
+      updated++
+    }
+
+    await loadMatches()
+    if (updated > 0)
+      toast(`✅ Cập nhật ${updated} trận!${notFound > 0 ? ` (${notFound} trận chưa có dữ liệu)` : ''}`, 'success')
+    else
+      toast(`Chưa có kết quả mới. ${notFound} trận chưa hoàn thành.`, 'info')
+
+  } catch (err) {
+    console.error(err)
+    toast('Lỗi: ' + err.message, 'error')
+  }
+}
   
   if (loading) return (
     <div className="loading-center"><div className="spinner" style={{ width: 36, height: 36 }} /></div>
@@ -300,8 +407,8 @@ export default function AdminPage() {
       </div>
 
       {/* Add knockout match button */}
-      <div style={{ marginBottom: 16 }}>
-        <button className="btn btn-accent btn-sm" onClick={() => setShowAddModal(true)}>
+      <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-accent btn-sm" onClick={() => setShowAddModal(true)}>
           ➕ Thêm trận vòng loại trực tiếp
         </button>
         <button className="btn btn-sm" style={{ background: '#0ea5e9', color: 'white' }} onClick={handleAutoFetch}>
