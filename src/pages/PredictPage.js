@@ -77,6 +77,8 @@ function toEn(name) { return TEAM_NAME_MAP[name] || name }
 // Normalize chuỗi để so sánh: lowercase, bỏ dấu câu, bỏ khoảng trắng thừa
 function norm(s) {
   return s.toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9 ]/g, '')
     .replace(/\s+/g, ' ').trim()
 }
