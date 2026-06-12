@@ -145,17 +145,39 @@ async function fetchAllLiveScores() {
     return LIVE_SCORE_CACHE.data
   }
   try {
-    const res = await fetch(
+    // Thử lấy trận đang LIVE trước
+    let res = await fetch(
       `https://api.football-data.org/v4/competitions/WC/matches?status=LIVE`,
       { headers: { 'X-Auth-Token': FOOTBALL_DATA_API_KEY } }
     )
-    if (!res.ok) return LIVE_SCORE_CACHE.data
-    const data = await res.json()
-    const matches = data?.matches || []
+    if (!res.ok) {
+      console.error('[LiveScore] football-data.org lỗi:', res.status, await res.text())
+      return LIVE_SCORE_CACHE.data
+    }
+    let data = await res.json()
+    let matches = data?.matches || []
+
+    // Nếu không có trận LIVE nào (có thể do free tier filter status không khớp),
+    // fallback: lấy lịch hôm nay và lọc IN_PLAY/PAUSED ở client
+    if (matches.length === 0) {
+      const today = new Date().toISOString().slice(0, 10)
+      res = await fetch(
+        `https://api.football-data.org/v4/competitions/WC/matches?dateFrom=${today}&dateTo=${today}`,
+        { headers: { 'X-Auth-Token': FOOTBALL_DATA_API_KEY } }
+      )
+      if (res.ok) {
+        data = await res.json()
+        matches = (data?.matches || []).filter(m => m.status === 'IN_PLAY' || m.status === 'PAUSED')
+      }
+    }
+
+    console.log('[LiveScore] Số trận đang live từ football-data.org:', matches.length, matches.map(m => `${m.homeTeam?.name} ${m.score?.fullTime?.home}-${m.score?.fullTime?.away} ${m.awayTeam?.name} (${m.status}, ${m.minute}')`))
+
     LIVE_SCORE_CACHE.data = matches
     LIVE_SCORE_CACHE.ts = Date.now()
     return matches
-  } catch {
+  } catch (err) {
+    console.error('[LiveScore] Lỗi fetch:', err)
     return LIVE_SCORE_CACHE.data
   }
 }
@@ -168,12 +190,18 @@ function findLiveScore(matches, homeTeam, awayTeam) {
     return (teamsMatch(h, homeTeam) && teamsMatch(a, awayTeam)) ||
            (teamsMatch(h, awayTeam) && teamsMatch(a, homeTeam))
   })
-  if (!game) return null
+  if (!game) {
+    console.log(`[LiveScore] Không tìm thấy trận khớp: ${homeTeam} vs ${awayTeam}`)
+    return null
+  }
   const flipped = teamsMatch(game.homeTeam?.name || '', awayTeam)
   const ft = game.score?.fullTime || {}
   const home = flipped ? ft.away : ft.home
   const away = flipped ? ft.home : ft.away
-  if (home === null || home === undefined || away === null || away === undefined) return null
+  if (home === null || home === undefined || away === null || away === undefined) {
+    console.log(`[LiveScore] Tìm thấy trận nhưng chưa có tỷ số: ${homeTeam} vs ${awayTeam}`, game)
+    return null
+  }
   return {
     home: parseInt(home),
     away: parseInt(away),
