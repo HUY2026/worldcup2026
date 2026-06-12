@@ -337,6 +337,10 @@ h1, h2, h3, .display-font {
 .match-status-badge.done { background: var(--primary-bg); color: var(--primary); }
 .match-status-badge.live { background: #fee2e2; color: #dc2626; font-weight: 700; animation: livePulse 1.5s ease-in-out infinite; }
 @keyframes livePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+.match-card.is-live { border-left: 3px solid #dc2626; }
+.match-score.live-score { background: #fee2e2; border: 1px solid #fca5a5; }
+.match-score.live-score .score-num { color: #dc2626; }
 @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.2); } }
 
 /* Prediction buttons - vòng bảng */
